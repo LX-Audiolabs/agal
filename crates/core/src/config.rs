@@ -302,7 +302,8 @@ pub fn resolve_framework_id(name: &str) -> Option<String> {
         "raw-window-handle" => Some("raw-window-handle".to_string()),
         "clap-sys" | "clap" => Some("clap".to_string()),
         "vst3" => Some("vst3".to_string()),
-        "lv2" => Some("lv2".to_string()),
+        // lv2 crate name + common sys bindings (aura-lv2 uses lv2-sys)
+        "lv2" | "lv2-sys" | "lv2_raw" | "lv2-raw" => Some("lv2".to_string()),
         _ => None,
     }
 }
@@ -418,6 +419,8 @@ mod tests {
             Some("lx-slint-editor")
         );
         assert_eq!(resolve_framework_id("clap-sys").as_deref(), Some("clap"));
+        assert_eq!(resolve_framework_id("lv2-sys").as_deref(), Some("lv2"));
+        assert_eq!(resolve_framework_id("lv2").as_deref(), Some("lv2"));
         assert_eq!(resolve_framework_id("serde"), None);
     }
 

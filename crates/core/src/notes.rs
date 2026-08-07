@@ -18,7 +18,8 @@ const AUTO_START: &str = "<!-- AGAL:AUTO-START -->";
 const AUTO_END: &str = "<!-- AGAL:AUTO-END -->";
 const HUMAN_MARK: &str = "<!-- AGAL:HUMAN — edit below this line; preserved on regenerate -->";
 
-/// Write `notes/<name>.md` for each plugin and crate node.
+/// Write `notes/<name>.md` for each plugin, crate, and member node.
+/// Members (`examples/`, `tools/`) matter in framework workspaces (smoke, CLI).
 pub fn write_notes(output_dir: &Path, graph: &Audiolabs) -> Result<usize, String> {
     let notes_dir = output_dir.join("notes");
     fs::create_dir_all(&notes_dir)
@@ -28,7 +29,7 @@ pub fn write_notes(output_dir: &Path, graph: &Audiolabs) -> Result<usize, String
     let mut written = 0usize;
 
     for n in &graph.nodes {
-        if n.kind != "plugin" && n.kind != "crate" {
+        if n.kind != "plugin" && n.kind != "crate" && n.kind != "member" {
             continue;
         }
         let path = notes_dir.join(format!("{}.md", sanitize_filename(&n.name)));
@@ -511,6 +512,19 @@ fn write_index(notes_dir: &Path, graph: &Audiolabs) -> Result<(), String> {
             sanitize_filename(&n.name),
             n.id
         );
+    }
+    let members: Vec<&Node> = graph.nodes.iter().filter(|n| n.kind == "member").collect();
+    if !members.is_empty() {
+        let _ = writeln!(s, "\n## members (examples / tools)\n");
+        for n in members {
+            let _ = writeln!(
+                s,
+                "- [{}]({}.md) — `{}`",
+                n.name,
+                sanitize_filename(&n.name),
+                n.id
+            );
+        }
     }
     let path = notes_dir.join("_index.md");
     fs::write(&path, s).map_err(|e| format!("cannot write {}: {}", path.display(), e))?;

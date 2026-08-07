@@ -182,6 +182,12 @@ pub fn render_agent_md(graph: &Audiolabs, skills_dir: Option<&Path>) -> String {
         .filter(|n| n.kind == "crate")
         .map(|n| n.name.as_str())
         .collect();
+    let members: Vec<&str> = graph
+        .nodes
+        .iter()
+        .filter(|n| n.kind == "member")
+        .map(|n| n.name.as_str())
+        .collect();
     let _ = writeln!(
         s,
         "## notes (focus)\n`agal/notes/<name>.md` — auto header + human body\n"
@@ -202,6 +208,17 @@ pub fn render_agent_md(graph: &Audiolabs, skills_dir: Option<&Path>) -> String {
             s,
             "crates: {}\n",
             crates
+                .iter()
+                .map(|n| format!("`{n}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    if !members.is_empty() {
+        let _ = writeln!(
+            s,
+            "members: {}\n",
+            members
                 .iter()
                 .map(|n| format!("`{n}`"))
                 .collect::<Vec<_>>()
@@ -455,7 +472,7 @@ pub fn write_agal_md(
     Ok(())
 }
 
-/// After `skills sync`: refresh AGAL.md using `agal.json` if present.
+/// After `skills sync`: refresh AGAL.md + agent.md skills line using `agal.json` if present.
 pub fn refresh_agal_after_skills_sync(
     project_root: &Path,
     output_dir_name: &str,
@@ -469,7 +486,25 @@ pub fn refresh_agal_after_skills_sync(
         g
     });
     write_agal_md(&output_dir, graph.as_ref(), output_dir_name)?;
-    println!("  agal: {}/AGAL.md (skills index refreshed)", output_dir_name);
+    // Keep agent map skills count in sync (was only updated on full `agal .`).
+    if let Some(g) = graph.as_ref() {
+        let skills_dir = output_dir.join("skills");
+        let skills = if skills_dir.is_dir() {
+            Some(skills_dir.as_path())
+        } else {
+            None
+        };
+        let agent_md = render_agent_md(g, skills);
+        let agent_path = output_dir.join("agal.agent.md");
+        fs::write(&agent_path, agent_md)
+            .map_err(|e| format!("cannot write {}: {}", agent_path.display(), e))?;
+        println!(
+            "  agal: {}/AGAL.md + agal.agent.md (skills index refreshed)",
+            output_dir_name
+        );
+    } else {
+        println!("  agal: {}/AGAL.md (skills index refreshed)", output_dir_name);
+    }
     Ok(())
 }
 
@@ -607,6 +642,7 @@ fn skill_group_short(dir: &str) -> &str {
         "04-ui" => "ui",
         "05-migrations" => "migrations",
         "06-agents" => "agents",
+        "07-aura" => "aura",
         other => other,
     }
 }

@@ -575,7 +575,8 @@ mod tests {
     #[test]
     fn group_policy() {
         let s = parse_selection("policy").unwrap();
-        assert_eq!(s.files.len(), 2);
+        // caveman, ponytail, versioning
+        assert_eq!(s.files.len(), 3);
         assert!(s.files.iter().all(|f| f.group == SkillGroup::Policy));
     }
 

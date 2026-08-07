@@ -6,6 +6,14 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [0.6.2] — 2026-08-07
+
+### Fixed
+- **`lv2-sys` / `lv2-raw` → framework `lv2`** — format wrappers that bind LV2 via sys crates (e.g. AURA `aura-lv2`) now appear in `used_frameworks` and per-node `frameworks`.
+- **`agal skills sync` refreshes `agal.agent.md`** — skills count no longer stale after sync (was only rewritten on full `agal .`).
+- **`crate_no_dependents` skips nested `/examples/`** — package demos under `crates/*/examples/` no longer info-noise.
+- **Notes for `member` nodes** — `examples/` and `tools/` get L1 notes + index section (framework workspaces).
+
 ## [0.6.1] — 2026-08-07
 
 ### Added

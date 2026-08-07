@@ -706,9 +706,11 @@ pub fn analyze(
             );
         }
 
-        // Workspace crate with zero inbound edges (possible dead / not wired)
+        // Workspace crate with zero inbound edges (possible dead / not wired).
+        // Skip nested package examples — demos are path-included, not dependents.
         let in_count = inbound.get(n.id.as_str()).copied().unwrap_or(0);
-        if in_count == 0 && n.name != "lx-slint-build" {
+        let is_nested_example = n.id.contains("/examples/") || n.path.contains("/examples/");
+        if in_count == 0 && n.name != "lx-slint-build" && !is_nested_example {
             out.push(
                 Finding::new(
                     Severity::Info,

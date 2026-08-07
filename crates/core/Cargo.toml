@@ -1,6 +1,6 @@
 [package]
 name = "agal-core"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2024"
 description = "Core library for agentic-audiolab (agal)"
 license = "GPL-3.0-or-later"
