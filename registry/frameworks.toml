@@ -1,0 +1,54 @@
+# Framework registry for agentic-audiolab
+# Index of audio-plugin frameworks, UI stacks, and plugin formats.
+
+[frameworks.truce]
+name = "truce"
+homepage = "https://github.com/truce-audio/truce"
+docs = "https://docs.rs/truce"
+skill_source = "https://github.com/LX-Audiolabs/agal-skills/tree/main/truce"
+
+[frameworks.nih-plug]
+name = "nih-plug"
+homepage = "https://github.com/robbert-vdh/nih-plug"
+docs = "https://docs.rs/nih_plug"
+skill_source = "https://github.com/LX-Audiolabs/agal-skills/tree/main/nih-plug"
+
+[frameworks.nice-plug]
+name = "nice-plug"
+homepage = "https://github.com/..."
+skill_source = "https://github.com/LX-Audiolabs/agal-skills/tree/main/nice-plug"
+migrates_from = "nih-plug"
+
+[frameworks.clack]
+name = "clack"
+homepage = "https://github.com/prokopyl/clack"
+docs = "https://docs.rs/clack"
+skill_source = "https://github.com/LX-Audiolabs/agal-skills/tree/main/clack"
+
+[ui.slint]
+name = "slint"
+homepage = "https://slint.dev"
+docs = "https://slint.dev/docs"
+
+[ui.egui]
+name = "egui"
+homepage = "https://github.com/emilk/egui"
+
+[ui.iced]
+name = "iced"
+homepage = "https://github.com/iced-rs/iced"
+
+[ui.vizia]
+name = "vizia"
+homepage = "https://github.com/vizia/vizia"
+
+[formats.clap]
+spec = "https://github.com/free-audio/clap"
+changelog = "https://github.com/free-audio/clap/blob/main/ChangeLog.md"
+
+[formats.vst3]
+spec = "https://developer.steinberg.help/display/VST/Technical+Documentation"
+
+[formats.lv2]
+spec = "https://lv2plug.in/ns/"
+homepage = "https://lv2plug.in/"

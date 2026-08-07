@@ -1,0 +1,9 @@
+[package]
+name = "legacy_ed"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+truce = "0.1"
+truce-slint = "0.1"
+slint = "0.1"

@@ -1,0 +1,28 @@
+# Dependabot — agal (Agentic Audiolab).
+# Weekly cargo PRs for crates.io deps, monthly CI action bumps.
+# Review + `cargo build --workspace && cargo test --workspace` before merge.
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 8
+    labels:
+      - dependencies
+      - rust
+    groups:
+      serde:
+        patterns:
+          - "serde"
+          - "serde_json"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - ci

@@ -1,0 +1,15 @@
+[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+description = "fixture plugin"
+
+[features]
+default = ["clap"]
+clap = []
+
+[dependencies]
+truce = "0.1"
+lx-slint-editor = "0.1"
+slint = "0.1"
+shared = { path = "../../crates/shared" }

@@ -1,0 +1,13 @@
+/target
+
+# PM layer / dogfood output (regenerate with `agal .` / `agal skills sync`)
+/audiolabs/
+
+# one-off probe dumps (e.g. `agal -o _probe_out …`)
+/_probe_out/
+
+# test fixture outputs
+crates/core/tests/fixtures/**/_test_*/
+
+# private agent identity (email, tokens, machine paths)
+/AGENTS.local.md

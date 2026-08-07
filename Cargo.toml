@@ -1,0 +1,24 @@
+[package]
+name = "agentic-audiolab"
+version = "0.6.1"
+edition = "2024"
+description = "Orientation layer for AI-assisted Rust audio workspaces: graph, hybrid notes, curated skills"
+license = "GPL-3.0-or-later"
+authors = ["agentic-audiolab contributors"]
+repository = "https://github.com/LX-Audiolabs/agal"
+homepage = "https://github.com/LX-Audiolabs/agal"
+keywords = ["audio", "plugin", "clap", "vst", "graph"]
+categories = ["development-tools", "multimedia::audio"]
+publish = false
+
+[[bin]]
+name = "agal"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+agal-core = { path = "crates/core" }
+
+[workspace]
+members = ["crates/core"]
+resolver = "2"

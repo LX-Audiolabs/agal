@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "plugins/demo",
+    "plugins/legacy_ed",
+    "crates/shared",
+    "crates/missing-member",
+]
+resolver = "2"

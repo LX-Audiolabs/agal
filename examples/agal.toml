@@ -1,0 +1,32 @@
+# agal.toml — project configuration for agal.
+# Place next to your workspace Cargo.toml. All fields optional.
+#
+# Auto-detected: project_name, internal path deps, frameworks, Lx* UI exports.
+# Zero-config still applies default migration truce-slint → lx-slint-editor
+# (dogfood path). Override with [migrations.*] for other stacks.
+
+# --- minimal ---
+# project_name = "My Audio Plugins"
+# output_dir = "agal"
+
+# [migrations.old-to-new]
+# from = "old-adapter"
+# to = "new-adapter"
+
+# [rules]
+# crate_vs_plugin = "Reusable logic in crates/, product logic in plugins/."
+# plugin_target_editor = "Use new-adapter for all plugins."
+
+# [[suppress]]
+# code = "large_param_surface"
+# node = "my-plugin"          # name, path, or id; omit / "*" = all
+# reason = "intentional product surface"
+
+# --- dogfood extras (LX / truce + Slint) ---
+# ui_crates = ["lx-ui-slint"]          # also auto-detected via `export component Lx*`
+# ipc_hubs = ["lx-shm", "lx-analysis"]
+
+# [frameworks.my-adapter]
+# name = "my-adapter"
+# kind = "editor_adapter"
+# notes = "Custom UI bridge"
