@@ -1,5 +1,10 @@
 # agentic-audiolab (`agal`)
 
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-0.6.1-informational.svg)](Cargo.toml)
+[![agal](https://img.shields.io/badge/powered%20by-agal-00ADD8.svg)](https://github.com/LX-Audiolabs/agal)
+
 **Summary:** Orientation layer for AI-assisted Rust audio workspaces — graph,
 hybrid notes, curated + workspace skills, structural findings with health gate.
 
