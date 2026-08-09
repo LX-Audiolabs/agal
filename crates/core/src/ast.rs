@@ -519,6 +519,13 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
         if let Some(crate_name) = crate::config::crate_name_from_use_path(&path) {
             self.summary.imported_crates.insert(crate_name.clone());
             self.record_symbol(&format!("use {}", crate_name));
+            // Any imported crate whose name ends with -editor is treated as an
+            // editor adapter (e.g. lx-slint-editor, aura-editor).
+            if crate_name.ends_with("-editor") {
+                self.summary
+                    .imported_editor_adapters
+                    .insert(crate_name);
+            }
         }
 
         if path.contains("truce_slint") || path.contains("truce-slint") {
@@ -778,5 +785,31 @@ fn use_tree_to_string(tree: &syn::UseTree) -> String {
             .map(use_tree_to_string)
             .collect::<Vec<_>>()
             .join(","),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_aura_editor_adapter_from_glob_use() {
+        let tmp = std::env::temp_dir().join(format!(
+            "agal_test_aura_editor_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("editor.rs"), "use aura_editor::typed::*;\n").unwrap();
+
+        let summary = analyze_crate_with_options(&tmp, AnalyzeOptions::default());
+        let _ = fs::remove_dir_all(&tmp);
+
+        assert!(
+            summary.imported_editor_adapters.contains("aura-editor"),
+            "expected aura-editor adapter, got {:?}",
+            summary.imported_editor_adapters
+        );
     }
 }
