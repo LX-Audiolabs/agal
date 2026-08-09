@@ -339,7 +339,7 @@ pub fn analyze(
             );
         }
 
-        // Has Slint / truce UI path but no editor adapter detected
+        // Has Slint / AURA UI path but no editor adapter detected
         let has_slint =
             p.frameworks.iter().any(|f| f == "slint") || !ast.slint_components.is_empty();
         if has_slint
@@ -347,7 +347,7 @@ pub fn analyze(
             && !p
                 .frameworks
                 .iter()
-                .any(|f| f == "lx-slint-editor" || f == "truce-slint" || f.ends_with("-editor"))
+                .any(|f| f == "lx-slint-editor" || f == "truce-slint" || f == "aura-editor" || f.ends_with("-editor"))
         {
             out.push(
                 Finding::new(

@@ -7,6 +7,11 @@ homepage = "https://github.com/truce-audio/truce"
 docs = "https://docs.rs/truce"
 skill_source = "https://github.com/LX-Audiolabs/agal-skills/tree/main/truce"
 
+[frameworks.aura]
+name = "AURA"
+homepage = "https://github.com/LX-Audiolabs/AURA"
+skill_source = "https://github.com/LX-Audiolabs/agal-skills/tree/main/aura"
+
 [frameworks.nih-plug]
 name = "nih-plug"
 homepage = "https://github.com/robbert-vdh/nih-plug"

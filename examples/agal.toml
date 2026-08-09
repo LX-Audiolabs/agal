@@ -22,7 +22,7 @@
 # node = "my-plugin"          # name, path, or id; omit / "*" = all
 # reason = "intentional product surface"
 
-# --- dogfood extras (LX / truce + Slint) ---
+# --- dogfood extras (LX / AURA + Slint) ---
 # ui_crates = ["lx-ui-slint"]          # also auto-detected via `export component Lx*`
 # ipc_hubs = ["lx-shm", "lx-analysis"]
 

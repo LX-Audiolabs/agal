@@ -31,7 +31,7 @@ Orientation layer for AI-assisted Rust audio workspaces:
 | Canonical skills | `skills/` (synced into workspaces via CLI) |
 | Config sample | `examples/agal.toml` |
 
-Dogfood shape: LX Audiolabs (`plugins/` + `crates/`, truce, Slint).  
+Dogfood shape: LX Audiolabs (`plugins/` + `crates/`, AURA, Slint).  
 Does **not** replace Clippy, clap-validator, or graphify.
 
 ## Orientation in *this* repo

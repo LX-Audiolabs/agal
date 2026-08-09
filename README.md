@@ -22,7 +22,7 @@ hybrid notes, curated + workspace skills, structural findings with health gate.
 ## Scope (honest)
 
 **Best support:** monorepos shaped like **LX Audiolabs** — `plugins/` + `crates/`,
-**truce** + **Slint** + shared UI (`Lx*`) + optional SHM/relay. Zero-config still
+**AURA** + **Slint** + shared UI (`Lx*`) + optional SHM/relay. Zero-config still
 applies a default editor migration: `truce-slint` → `lx-slint-editor` (override or
 extend in `agal.toml`).
 
@@ -152,7 +152,7 @@ Optional: version adapted skill packs while keeping graph/notes local:
 - **Plugin vs crate** (`plugins/` / `crates/`)
 - **Frameworks on nodes** (deps/imports) → `used_frameworks` / agent **“frameworks detected”**  
   (migration endpoints from config are **not** injected into that list)
-- **Frameworks (strength):** truce strong; nih-plug, clack, … best-effort
+- **Frameworks (strength):** AURA first-class; all others best-effort
 - **UI stacks:** Slint (deep), egui / Iced / Vizia / baseview (lighter)
 - **Editor adapters** + migrations (default dogfood: truce-slint → lx-slint-editor)
 - **Formats:** CLAP, VST3, LV2
@@ -185,7 +185,7 @@ output_dir = "agal"
 # reason = "intentional product surface"
 ```
 
-### Dogfood example (LX / truce + Slint)
+### Dogfood example (LX / AURA + Slint)
 
 Zero-config already assumes the truce-slint migration. Explicit form:
 

@@ -222,6 +222,7 @@ pub fn default_taxonomy() -> BTreeMap<String, FrameworkSpec> {
     let mut map = load_registry_frameworks();
 
     for (id, name, kind) in [
+        ("aura", "AURA", "framework"),
         ("truce", "truce.audio", "framework"),
         ("nih-plug", "nih-plug", "framework"),
         ("clack", "clack", "framework"),
@@ -259,6 +260,8 @@ pub fn default_taxonomy() -> BTreeMap<String, FrameworkSpec> {
     for (id, name) in [
         ("truce-slint", "truce-slint"),
         ("lx-slint-editor", "lx-slint-editor"),
+        ("aura-editor", "aura-editor"),
+        ("aura-baseview", "aura-baseview"),
     ] {
         map.insert(
             id.to_string(),
@@ -286,6 +289,13 @@ pub fn default_taxonomy() -> BTreeMap<String, FrameworkSpec> {
 
 pub fn resolve_framework_id(name: &str) -> Option<String> {
     match name {
+        "aura" | "aura-core" | "aura-params" | "aura-dsp" | "aura-midi"
+        | "aura-build" | "aura-test" | "aura-shm" | "aura-derive" => Some("aura".to_string()),
+        "aura-clap" => Some("clap".to_string()),
+        "aura-lv2" => Some("lv2".to_string()),
+        "aura-vst3" => Some("vst3".to_string()),
+        "aura-editor" => Some("aura-editor".to_string()),
+        "aura-baseview" => Some("aura-baseview".to_string()),
         "truce" | "truce-core" | "truce-params" | "truce-clap" | "truce-vst3" | "truce-lv2"
         | "truce-loader" | "truce-test" | "truce-slint-build" => Some("truce".to_string()),
         "truce-slint" => Some("truce-slint".to_string()),
