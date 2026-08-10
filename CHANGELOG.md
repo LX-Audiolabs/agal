@@ -8,6 +8,10 @@ All notable changes to `agentic-audiolab` / `agal`.
 
 ## [0.7.0] — Unreleased
 
+### Fixed
+- **`clap` CLI crate ≠ CLAP format** — bare dependency/`use clap` no longer marks workspaces as CLAP plugin format. Only `clap-sys` (and format wrappers like `aura-clap`) map to CLAP. Fixes false positives on CLI tools (e.g. CODEWIG).
+- **Quiet non-plugin maps** — skip empty `## plugins` / `## crates` sections; skip migration block when `total_plugins == 0`. Agent summary framing: "audio workspace" (not only plugins).
+
 ### Added
 - **AURA skill pack** (`skills/02-frameworks/aura.md`) — PluginLogic, `#[derive(Params)]` with `id=N`, `cargo aura` CLI, format wrappers. Embedded in catalog → `agal skills sync --only frameworks` / `frameworks/aura`.
 - **AURA migration skill** (`skills/02-frameworks/aura-migration.md`) — truce→AURA step-by-step: macro→trait, params IDs, editor switch, build, findings reference. Embedded → `frameworks/aura-migration`.

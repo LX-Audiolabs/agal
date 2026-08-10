@@ -330,12 +330,19 @@ pub fn resolve_framework_id(name: &str) -> Option<String> {
         "wry" => Some("wry".to_string()),
         "baseview" => Some("baseview".to_string()),
         "raw-window-handle" => Some("raw-window-handle".to_string()),
-        "clap-sys" | "clap" => Some("clap".to_string()),
+        // CLAP *audio* format only via sys / format crates — NOT the `clap` CLI parser crate.
+        "clap-sys" => Some("clap".to_string()),
         "vst3" => Some("vst3".to_string()),
         // lv2 crate name + common sys bindings (aura-lv2 uses lv2-sys)
         "lv2" | "lv2-sys" | "lv2_raw" | "lv2-raw" => Some("lv2".to_string()),
         _ => None,
     }
+}
+
+/// Crate names that collide with audio taxonomy IDs but are unrelated.
+/// Example: `clap` (clap-rs CLI) ≠ CLAP plugin format.
+fn is_ambiguous_crate_name(name: &str) -> bool {
+    matches!(name, "clap")
 }
 
 pub fn crate_name_from_use_path(path: &str) -> Option<String> {
@@ -361,6 +368,9 @@ pub fn detect_framework_ids(
     let mut detected = BTreeSet::new();
 
     for dep in dependency_names {
+        if is_ambiguous_crate_name(dep) {
+            continue;
+        }
         if let Some(id) = resolve_framework_id(dep)
             && taxonomy.contains_key(&id)
         {
@@ -372,6 +382,9 @@ pub fn detect_framework_ids(
     }
 
     for imp in imported_crates {
+        if is_ambiguous_crate_name(imp) {
+            continue;
+        }
         if let Some(id) = resolve_framework_id(imp)
             && taxonomy.contains_key(&id)
         {
@@ -400,7 +413,7 @@ pub fn summarize_external_deps(
             truce_stack = true;
             continue;
         }
-        if matches!(d.as_str(), "clap-sys" | "clap") {
+        if d.as_str() == "clap-sys" {
             flags.insert("clap".to_string());
             continue;
         }
@@ -449,9 +462,34 @@ mod tests {
             Some("lx-slint-editor")
         );
         assert_eq!(resolve_framework_id("clap-sys").as_deref(), Some("clap"));
+        // clap-rs CLI parser must not map to CLAP audio format
+        assert_eq!(resolve_framework_id("clap"), None);
         assert_eq!(resolve_framework_id("lv2-sys").as_deref(), Some("lv2"));
         assert_eq!(resolve_framework_id("lv2").as_deref(), Some("lv2"));
         assert_eq!(resolve_framework_id("serde"), None);
+    }
+
+    #[test]
+    fn clap_cli_crate_not_detected_as_plugin_format() {
+        let tax = default_taxonomy();
+        let deps: BTreeSet<String> = ["clap", "serde", "codewig-core"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let imports: BTreeSet<String> = ["clap"].into_iter().map(String::from).collect();
+        let ids = detect_framework_ids(&tax, &deps, &imports);
+        assert!(
+            !ids.contains("clap"),
+            "CLI clap must not appear as CLAP format, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn clap_sys_still_detected_as_plugin_format() {
+        let tax = default_taxonomy();
+        let deps: BTreeSet<String> = ["clap-sys"].into_iter().map(String::from).collect();
+        let ids = detect_framework_ids(&tax, &deps, &BTreeSet::new());
+        assert!(ids.contains("clap"), "clap-sys should map to clap, got {ids:?}");
     }
 
     #[test]

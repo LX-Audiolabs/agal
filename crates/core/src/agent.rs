@@ -31,8 +31,8 @@ pub fn render_agent_md(graph: &Audiolabs, skills_dir: Option<&Path>) -> String {
     let _ = writeln!(
         s,
         "# agal agent summary\n\n\
-         **Summary:** Compact structural map of this audio-plugin workspace.  \n\
-         Lists plugins, crates, frameworks, migrations, edges, and findings.  \n\
+         **Summary:** Compact structural map of this audio workspace.  \n\
+         Lists members, plugins, crates, frameworks, edges, and findings.  \n\
          Use as first context before opening the full JSON graph.\n\n\
          project: **{}**  \n\
          generated: `{}`  \n\
@@ -71,22 +71,32 @@ pub fn render_agent_md(graph: &Audiolabs, skills_dir: Option<&Path>) -> String {
         let _ = writeln!(s);
     }
 
-    // Migration — open legacy only; completed work is one quiet line (not a permanent focus).
+    // Migration — only when plugins exist and legacy/migrated is non-zero.
     write_migration_section(&mut s, &graph.migration_summary);
 
-    // Plugins one-liners
-    let _ = writeln!(s, "## plugins");
-    for n in graph.nodes.iter().filter(|n| n.kind == "plugin") {
-        let _ = writeln!(s, "{}", plugin_line(n));
+    // Plugins (omit section when none — tool/framework workspaces stay quiet)
+    let plugins: Vec<&crate::Node> = graph
+        .nodes
+        .iter()
+        .filter(|n| n.kind == "plugin")
+        .collect();
+    if !plugins.is_empty() {
+        let _ = writeln!(s, "## plugins");
+        for n in plugins {
+            let _ = writeln!(s, "{}", plugin_line(n));
+        }
+        let _ = writeln!(s);
     }
-    let _ = writeln!(s);
 
-    // Crates
-    let _ = writeln!(s, "## crates");
-    for n in graph.nodes.iter().filter(|n| n.kind == "crate") {
-        let _ = writeln!(s, "{}", crate_line(n));
+    // Crates (omit when empty)
+    let crates: Vec<&crate::Node> = graph.nodes.iter().filter(|n| n.kind == "crate").collect();
+    if !crates.is_empty() {
+        let _ = writeln!(s, "## crates");
+        for n in crates {
+            let _ = writeln!(s, "{}", crate_line(n));
+        }
+        let _ = writeln!(s);
     }
-    let _ = writeln!(s);
 
     // Edges compact by kind
     let _ = writeln!(s, "## edges");
@@ -514,7 +524,8 @@ fn chrono_stub() -> String {
 }
 
 fn write_migration_section(s: &mut String, ms: &crate::MigrationSummary) {
-    if ms.migrations.is_empty() {
+    // Non-plugin workspaces (tools, CLI/UI apps) have no migration theatre.
+    if ms.migrations.is_empty() || ms.total_plugins == 0 {
         return;
     }
     if ms.total_legacy > 0 {
@@ -643,6 +654,7 @@ fn skill_group_short(dir: &str) -> &str {
         "05-migrations" => "migrations",
         "06-agents" => "agents",
         "07-aura" => "aura",
+        "07-codewig" => "codewig",
         other => other,
     }
 }
