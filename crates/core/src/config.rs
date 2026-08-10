@@ -84,21 +84,41 @@ pub struct MigrationSpec {
 }
 
 /// Built-in editor-adapter migration when the config omits `[migrations.*]`.
-/// Matches the common LX / truce path; override or extend via config.
-pub fn default_migrations() -> BTreeMap<String, MigrationSpec> {
+/// AURA-first: when an `aura.toml` or `aura-*` crates are present, default to
+/// `truce-slint → aura-editor`; otherwise legacy `truce-slint → lx-slint-editor`.
+pub fn default_migrations(is_aura: bool) -> BTreeMap<String, MigrationSpec> {
     let mut m = BTreeMap::new();
     m.insert(
         "truce-slint".to_string(),
         MigrationSpec {
             from: "truce-slint".to_string(),
-            to: "lx-slint-editor".to_string(),
+            to: if is_aura {
+                "aura-editor".to_string()
+            } else {
+                "lx-slint-editor".to_string()
+            },
         },
     );
     m
 }
 
+/// Detect whether a workspace root is an AURA workspace (has `aura.toml`).
+pub fn is_aura_workspace(project_root: &Path) -> bool {
+    project_root.join("aura.toml").is_file()
+}
+
+/// Returns the aura config path if present.
+pub fn aura_config_path(project_root: &Path) -> Option<std::path::PathBuf> {
+    let candidate = project_root.join("aura.toml");
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 impl ProjectConfig {
-    /// Load the project config (`agal.toml`, falling back to `agal.toml` / `audio-graph.toml`).
+    /// Load the project config (`agal.toml`, falling back to `audiolabs.toml` / `audio-graph.toml`).
     pub fn load(project_root: &Path) -> Self {
         let path = config_path(project_root);
         let mut cfg = if let Some(path) = path {
@@ -119,7 +139,7 @@ impl ProjectConfig {
         };
         // Zero-config: still track the known editor-adapter migration.
         if cfg.migrations.is_empty() {
-            cfg.migrations = default_migrations();
+            cfg.migrations = default_migrations(is_aura_workspace(project_root));
         }
         cfg
     }
@@ -436,9 +456,17 @@ mod tests {
 
     #[test]
     fn default_migrations_truce_slint() {
-        let m = default_migrations();
+        let m = default_migrations(false);
         let t = m.get("truce-slint").expect("migration");
         assert_eq!(t.from, "truce-slint");
         assert_eq!(t.to, "lx-slint-editor");
+    }
+
+    #[test]
+    fn default_migrations_aura() {
+        let m = default_migrations(true);
+        let t = m.get("truce-slint").expect("migration");
+        assert_eq!(t.from, "truce-slint");
+        assert_eq!(t.to, "aura-editor");
     }
 }

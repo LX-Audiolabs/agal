@@ -201,14 +201,22 @@ pub fn analyze(
         .collect();
 
     let shm_node = nodes.iter().find(|n| n.name == "lx-shm");
-    // Default LX target; override only if rules text names another *-editor crate.
+    let is_aura_ws = crate::config::is_aura_workspace(project_root);
+
+    // Editor target: AURA workspace → aura-editor, else lx-slint-editor.
+    // Respect explicit `plugin_target_editor` rule if set.
     let editor_target = rules
         .get("plugin_target_editor")
         .and_then(|s| {
             s.split(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
                 .find(|t| t.ends_with("-editor") && *t != "truce-slint")
         })
-        .unwrap_or("lx-slint-editor");
+        .unwrap_or(if is_aura_ws { "aura-editor" } else { "lx-slint-editor" });
+
+    /// Node uses AURA framework (not truce/nih-plug/clack).
+    fn is_aura_plugin(p: &Node) -> bool {
+        p.frameworks.iter().any(|f| f == "aura")
+    }
 
     // Incoming edge counts for unused-crate detection.
     let mut inbound: BTreeMap<&str, usize> = BTreeMap::new();
@@ -455,46 +463,80 @@ pub fn analyze(
             );
         }
 
-        // PluginLogic type vs truce::plugin! logic mismatch
-        if !ast.plugin_logic_impls.is_empty() && !ast.plugin_macro_types.is_empty() {
-            let logic = &ast.plugin_logic_impls;
-            let macros = &ast.plugin_macro_types;
-            if logic.intersection(macros).next().is_none() {
+        // --- AURA-specific findings ---
+        if is_aura_plugin(p) {
+            // AURA: missing PluginLogic impl
+            if ast.plugin_logic_impls.is_empty() {
                 out.push(
                     Finding::new(
                         Severity::Error,
-                        "logic_macro_mismatch",
+                        "aura_missing_plugin_logic",
                         format!(
-                            "{} PluginLogic {:?} does not match truce::plugin! logic {:?}",
-                            p.name, logic, macros
+                            "{} uses AURA but has no `impl PluginLogic for …` detected",
+                            p.name
                         ),
                     )
                     .at_node(p)
                     .with_fix(format!(
-                        "align `truce::plugin!(logic = …)` with PluginLogic type in `{}`",
+                        "add `impl PluginLogic for <Type> {{ fn process(&mut self, ctx: &mut ProcessCtx, params: &<Params>) {{ … }} }}` in `{}`",
                         p.path
                     )),
                 );
             }
-        }
 
-        // Params without plugin! wiring
-        if !ast.params_structs.is_empty() && ast.plugin_macro_types.is_empty() {
-            out.push(
-                Finding::new(
-                    Severity::Info,
-                    "params_without_plugin_macro",
-                    format!(
-                        "{} has Params struct(s) but no truce::plugin! logic type seen",
-                        p.name
-                    ),
-                )
-                .at_node(p)
-                .with_fix(format!(
-                    "wire Params via framework plugin macro in `{}`",
-                    p.path
-                )),
-            );
+            // AURA: params field(s) without explicit id = N
+            let fields_without_id: Vec<String> = ast
+                .params_fields
+                .values()
+                .flat_map(|v| v.iter())
+                .filter(|f| !f.has_explicit_id && !f.hidden)
+                .map(|f| f.name.clone())
+                .collect();
+            if !fields_without_id.is_empty() {
+                let sample: Vec<&str> = fields_without_id.iter().take(8).map(|s| s.as_str()).collect();
+                let more = if fields_without_id.len() > 8 {
+                    format!(" (+{} more)", fields_without_id.len() - 8)
+                } else {
+                    String::new()
+                };
+                out.push(
+                    Finding::new(
+                        Severity::Warn,
+                        "aura_missing_param_ids",
+                        format!(
+                            "{} AURA params missing explicit `id = N`: {}{} — AURA requires wire-stable ids",
+                            p.name,
+                            sample.join(", "),
+                            more
+                        ),
+                    )
+                    .at_node(p)
+                    .with_fix(format!(
+                        "add `id = N` (unique, stable) to each `#[param(…)]` attribute in `{}`",
+                        p.path
+                    )),
+                );
+            }
+
+            // AURA: truce imports/macros in AURA plugin
+            let has_truce_imports = ast.imported_crates.iter().any(|c| c.starts_with("truce"));
+            if has_truce_imports || !ast.plugin_macro_types.is_empty() {
+                out.push(
+                    Finding::new(
+                        Severity::Info,
+                        "aura_truce_migration",
+                        format!(
+                            "{} is on AURA but has truce imports/macros — migrate to PluginLogic trait",
+                            p.name
+                        ),
+                    )
+                    .at_node(p)
+                    .with_fix(format!(
+                        "replace truce macros/imports with `use aura::prelude::*` + `impl PluginLogic` in `{}`",
+                        p.path
+                    )),
+                );
+            }
         }
 
         // process without editor
@@ -798,8 +840,8 @@ pub fn analyze(
         }
     }
 
-    // External tool hints (info only; never block health)
-    crate::tool_hints::append_hints(nodes, &mut out);
+    // External tool hints are injected by the caller (lib.rs) after analyze
+    // to have access to project_root for aura.toml detection.
 
     out.sort_by(|a, b| {
         severity_rank(&a.severity)

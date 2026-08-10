@@ -60,7 +60,7 @@ pub fn probe_tools() -> ToolStatus {
 }
 
 /// Append workspace/plugin **info** hints (never error/warn).
-pub fn append_hints(nodes: &[Node], out: &mut Vec<Finding>) {
+pub fn append_hints(project_root: &Path, nodes: &[Node], out: &mut Vec<Finding>) {
     let status = probe_tools();
 
     // One workspace-level Clippy hint (not per crate).
@@ -82,6 +82,35 @@ pub fn append_hints(nodes: &[Node], out: &mut Vec<Finding>) {
             .with_fix(clippy_fix),
     );
 
+    // AURA workspace: hint cargo aura if aura.toml or aura-* crates present
+    let is_aura_ws = crate::config::is_aura_workspace(project_root);
+    let has_aura_nodes = nodes.iter().any(|n| n.frameworks.iter().any(|f| f == "aura"));
+    if is_aura_ws || has_aura_nodes {
+        let aura_msg = if has_aura_nodes {
+            "AURA framework detected — use `cargo aura` for build, install, doctor"
+        } else {
+            "AURA workspace (`aura.toml`) detected — use `cargo aura` for build, install, doctor"
+        };
+        let plugin_names: Vec<&str> = nodes
+            .iter()
+            .filter(|n| n.kind == "plugin")
+            .map(|n| n.name.as_str())
+            .collect();
+        let aura_fix = if plugin_names.is_empty() {
+            "cargo aura build --clap && cargo aura doctor".to_string()
+        } else {
+            format!(
+                "cargo aura build --clap -plug {} && cargo aura doctor",
+                plugin_names.join(" ")
+            )
+        };
+        out.push(
+            Finding::new(Severity::Info, "tool_hint_cargo_aura", aura_msg)
+                .with_path("aura.toml")
+                .with_fix(aura_fix),
+        );
+    }
+
     // Per-plugin CLAP validator hint when format includes CLAP.
     for n in nodes.iter().filter(|n| n.kind == "plugin") {
         let has_clap = n
@@ -94,7 +123,7 @@ pub fn append_hints(nodes: &[Node], out: &mut Vec<Finding>) {
                 })
             })
             .unwrap_or(false)
-            || n.frameworks.iter().any(|f| f == "clap" || f == "truce");
+            || n.frameworks.iter().any(|f| f == "clap" || f == "truce" || f == "aura");
 
         if !has_clap {
             continue;
@@ -313,7 +342,7 @@ mod tests {
     #[test]
     fn append_hints_does_not_emit_symbol_tool_findings() {
         let mut out = Vec::new();
-        append_hints(&[], &mut out);
+        append_hints(Path::new("."), &[], &mut out);
         assert!(out.iter().all(|f| !f.code.contains("symbol") && !f.code.contains("codegraph")));
     }
 
@@ -354,7 +383,7 @@ mod tests {
             ast_summary: Some(crate::ast::AstSummary::default()),
         };
         let mut out = Vec::new();
-        append_hints(std::slice::from_ref(&clap), &mut out);
+        append_hints(Path::new("."), std::slice::from_ref(&clap), &mut out);
         let clap_hints: Vec<_> = out
             .iter()
             .filter(|f| f.code == "tool_hint_clap_validator")
@@ -367,7 +396,7 @@ mod tests {
         if let Some(a) = clap.ast_summary.as_mut() {
             a.plugin_formats.clear();
         }
-        append_hints(&[clap, other], &mut out);
+        append_hints(Path::new("."), &[clap, other], &mut out);
         assert!(out.iter().all(|f| f.code != "tool_hint_clap_validator"));
     }
 }

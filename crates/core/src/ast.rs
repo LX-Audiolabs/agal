@@ -18,6 +18,9 @@ pub struct ParamField {
     /// True when #[param] has flags containing hidden/bypass-only scaffolding.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hidden: bool,
+    /// True when #[param] has an explicit `id = N` (AURA required, truce optional).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_explicit_id: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -580,6 +583,7 @@ fn extract_param_fields(node: &ItemStruct) -> Vec<ParamField> {
         let display_name = meta.as_ref().and_then(|m| m.display_name.clone());
         let hidden =
             meta.as_ref().map(|m| m.hidden).unwrap_or(false) || is_internal_param_name(&name);
+        let has_explicit_id = meta.as_ref().map(|m| m.has_explicit_id).unwrap_or(false);
         // Only keep fields that look like params: have #[param] or type ends with Param.
         let looks_like_param = meta.is_some() || ty.ends_with("Param") || ty.contains("Param<");
         if !looks_like_param {
@@ -590,6 +594,7 @@ fn extract_param_fields(node: &ItemStruct) -> Vec<ParamField> {
             ty,
             display_name,
             hidden,
+            has_explicit_id,
         });
     }
     out
@@ -598,6 +603,7 @@ fn extract_param_fields(node: &ItemStruct) -> Vec<ParamField> {
 struct ParamMeta {
     display_name: Option<String>,
     hidden: bool,
+    has_explicit_id: bool,
 }
 
 fn extract_param_meta(attr: &syn::Attribute) -> Option<ParamMeta> {
@@ -621,9 +627,11 @@ fn extract_param_meta(attr: &syn::Attribute) -> Option<ParamMeta> {
             .as_deref()
             .map(|n| n.starts_with('_'))
             .unwrap_or(false);
+    let has_explicit_id = extract_int_assign(&tokens, "id").is_some();
     Some(ParamMeta {
         display_name,
         hidden,
+        has_explicit_id,
     })
 }
 
@@ -636,6 +644,17 @@ fn extract_string_assign(tokens: &str, key: &str) -> Option<String> {
         return Some(stripped[..end].to_string());
     }
     None
+}
+
+fn extract_int_assign(tokens: &str, key: &str) -> Option<i64> {
+    let key_pat = format!("{} =", key);
+    let idx = tokens.find(&key_pat)?;
+    let rest = tokens[idx + key_pat.len()..].trim_start();
+    let num_str: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if num_str.is_empty() {
+        return None;
+    }
+    num_str.parse().ok()
 }
 
 fn type_to_compact(ty: &syn::Type) -> String {

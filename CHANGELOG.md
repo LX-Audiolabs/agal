@@ -6,6 +6,28 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [0.7.0] — Unreleased
+
+### Added
+- **AURA skill pack** (`skills/02-frameworks/aura.md`) — PluginLogic, `#[derive(Params)]` with `id=N`, `cargo aura` CLI, format wrappers.
+- **AURA migration skill** (`skills/02-frameworks/aura-migration.md`) — truce→AURA step-by-step: macro→trait, params IDs, editor switch, build, findings reference.
+- **Slint skill expanded** (`skills/04-ui/slint.md`) — AuraSlintEditor host-embed, @aura widget catalog, callback wiring, aura-build pipeline, Lx* shared components.
+- **`aura.toml` detection** — auto-detected; enables AURA-specific editor migration path.
+- **AURA-specific findings:**
+  - `aura_missing_plugin_logic` (error) — plugin on AURA but no `impl PluginLogic` detected.
+  - `aura_missing_param_ids` (warn) — `#[param(...)]` fields without explicit `id = N`.
+  - `aura_truce_migration` (info) — truce imports/macros detected in AURA plugin.
+- **`cargo aura` tool hint** — info finding with build/install fix when AURA workspace detected.
+- **`has_explicit_id` on `ParamField`** — ast extraction now captures `id = N` from `#[param(...)]`.
+
+### Changed
+- **AURA-first defaults** — `default_migrations()` context-aware: `aura.toml` → `truce-slint → aura-editor`, else legacy.
+- **Editor target** — defaults to `aura-editor` in AURA workspaces.
+- **`append_hints` now wired** — tool hints injected into findings pipeline.
+
+### Removed
+- **truce-specific findings** — `logic_macro_mismatch` and `params_without_plugin_macro` removed; replaced by AURA equivalents.
+
 ## [0.6.2] — 2026-08-07
 
 ### Fixed

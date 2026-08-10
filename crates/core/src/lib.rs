@@ -887,8 +887,11 @@ fn build_audiolabs(
     let frameworks = build_frameworks_from_taxonomy(&taxonomy, &migrations, &used, verbose);
     let used_frameworks: Vec<String> = used.iter().cloned().collect();
 
+    let mut raw_findings = findings::analyze(project_root, &nodes, &edges, &project_config.rules);
+    tool_hints::append_hints(project_root, &nodes, &mut raw_findings);
+
     let (findings, findings_suppressed) = findings::apply_suppressions(
-        findings::analyze(project_root, &nodes, &edges, &project_config.rules),
+        raw_findings,
         &project_config.suppress,
     );
 

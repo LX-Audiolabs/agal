@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.85+-orange.svg)](Cargo.toml)
-[![Version](https://img.shields.io/badge/version-0.6.1-informational.svg)](Cargo.toml)
+[![Version](https://img.shields.io/badge/version-0.7.0-informational.svg)](Cargo.toml)
 [![agal](https://img.shields.io/badge/powered%20by-agal-00ADD8.svg)](https://github.com/LX-Audiolabs/agal)
 [![AI](https://img.shields.io/badge/dev-AI--assisted-6E40C9.svg)](https://github.com/LX-Audiolabs/agal)
 
@@ -22,12 +22,12 @@ hybrid notes, curated + workspace skills, structural findings with health gate.
 ## Scope (honest)
 
 **Best support:** monorepos shaped like **LX Audiolabs** — `plugins/` + `crates/`,
-**AURA** + **Slint** + shared UI (`Lx*`) + optional SHM/relay. Zero-config still
-applies a default editor migration: `truce-slint` → `lx-slint-editor` (override or
-extend in `agal.toml`).
+**AURA** + **Slint** + shared UI (`Lx*`) + optional SHM/relay. Zero-config
+auto-detects `aura.toml` and applies the AURA editor migration path
+(`truce-slint` → `aura-editor`) when present.
 
-**Best-effort elsewhere:** nih-plug / nice-plug / clack / generic Cargo workspaces
-via config + taxonomy. Heuristics and findings are weaker off the dogfood path.
+**Best-effort elsewhere:** nih-plug / nice-plug / clack / truce / generic Cargo
+workspaces via config + taxonomy. Heuristics and findings are weaker off the dogfood path.
 
 Does **not** replace Clippy, clap-validator, or a full knowledge graph (graphify).
 Three layers: **structure (agal)** · **Rust lint (Clippy)** · **CLAP binary (validator)**.
@@ -153,14 +153,16 @@ Optional: version adapted skill packs while keeping graph/notes local:
 - **Frameworks on nodes** (deps/imports) → `used_frameworks` / agent **“frameworks detected”**  
   (migration endpoints from config are **not** injected into that list)
 - **Frameworks (strength):** AURA first-class; all others best-effort
+- **`aura.toml`** — auto-detected; enables AURA-specific findings + editor migration
 - **UI stacks:** Slint (deep), egui / Iced / Vizia / baseview (lighter)
-- **Editor adapters** + migrations (default dogfood: truce-slint → lx-slint-editor)
+- **Editor adapters** + migrations (auto: `truce-slint` → `aura-editor` when `aura.toml` present)
 - **Formats:** CLAP, VST3, LV2
 - **Cargo edges** + semantic: `uses_ui`, `ipc_peer`, `runtime_depends_on`
-- **AST:** PluginLogic, Params, process/editor hooks, framework macros
+- **AST:** PluginLogic, `#[derive(Params)]` with `id = N`, process/editor hooks
+- **AURA-specific:** missing `PluginLogic` impl, params without explicit `id`, truce→AURA migration hints
 - **Integrity:** missing workspace members, packages outside workspace, required deps
 - **Findings** with optional `path` + `fix`; **suppress** via config
-- **Tool hints** (info): Clippy, clap-validator — not executed on generate; optional symbol tools are doctor-only
+- **Tool hints** (info): Clippy, clap-validator, `cargo aura` — not executed on generate; optional symbol tools are doctor-only
 
 ## Configuration (`agal.toml`)
 
@@ -187,7 +189,7 @@ output_dir = "agal"
 
 ### Dogfood example (LX / AURA + Slint)
 
-Zero-config already assumes the truce-slint migration. Explicit form:
+Zero-config auto-detects `aura.toml` and applies the AURA editor path. Explicit form:
 
 ```toml
 project_name = "My Plugins"
@@ -198,15 +200,15 @@ ipc_hubs = ["lx-shm", "lx-analysis"]
 
 [migrations.truce-slint]
 from = "truce-slint"
-to = "lx-slint-editor"
+to = "aura-editor"
 
 [rules]
-plugin_target_editor = "Plugins should use lx-slint-editor, not truce-slint."
+plugin_target_editor = "Plugins should use aura-editor."
 crate_vs_plugin = "Reusable logic in crates/, product logic in plugins/."
 
 [[suppress]]
 code = "large_param_surface"
-node = "aurum-slint"
+node = "mensor"
 reason = "product surface intentional"
 ```
 
