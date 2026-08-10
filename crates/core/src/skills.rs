@@ -23,6 +23,8 @@ pub const AUDIO_THREAD_BOUNDARY: &str =
 pub const FILTER_BIQUAD: &str = include_str!("../../../skills/00-core/filter-biquad.md");
 pub const FRAMEWORK_PATTERNS: &str =
     include_str!("../../../skills/02-frameworks/framework-patterns.md");
+pub const AURA: &str = include_str!("../../../skills/02-frameworks/aura.md");
+pub const AURA_MIGRATION: &str = include_str!("../../../skills/02-frameworks/aura-migration.md");
 
 pub const CLAP: &str = include_str!("../../../skills/03-formats/clap.md");
 pub const VST3: &str = include_str!("../../../skills/03-formats/vst3.md");
@@ -422,6 +424,16 @@ pub fn catalog() -> Vec<SkillFile> {
             content: FRAMEWORK_PATTERNS,
         },
         SkillFile {
+            group: SkillGroup::Frameworks,
+            rel_path: "02-frameworks/aura.md",
+            content: AURA,
+        },
+        SkillFile {
+            group: SkillGroup::Frameworks,
+            rel_path: "02-frameworks/aura-migration.md",
+            content: AURA_MIGRATION,
+        },
+        SkillFile {
             group: SkillGroup::Formats,
             rel_path: "03-formats/clap.md",
             content: CLAP,
@@ -578,6 +590,26 @@ mod tests {
         // caveman, ponytail, versioning
         assert_eq!(s.files.len(), 3);
         assert!(s.files.iter().all(|f| f.group == SkillGroup::Policy));
+    }
+
+    #[test]
+    fn group_frameworks() {
+        let s = parse_selection("frameworks").unwrap();
+        // framework-patterns, aura, aura-migration
+        assert_eq!(s.files.len(), 3);
+        assert!(s.files.iter().all(|f| f.group == SkillGroup::Frameworks));
+        assert!(s.files.iter().any(|f| f.rel_path == "02-frameworks/aura.md"));
+        assert!(s
+            .files
+            .iter()
+            .any(|f| f.rel_path == "02-frameworks/aura-migration.md"));
+    }
+
+    #[test]
+    fn single_frameworks_aura() {
+        let s = parse_selection("frameworks/aura").unwrap();
+        assert_eq!(s.files.len(), 1);
+        assert_eq!(s.files[0].rel_path, "02-frameworks/aura.md");
     }
 
     #[test]

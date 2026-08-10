@@ -9,8 +9,8 @@ All notable changes to `agentic-audiolab` / `agal`.
 ## [0.7.0] — Unreleased
 
 ### Added
-- **AURA skill pack** (`skills/02-frameworks/aura.md`) — PluginLogic, `#[derive(Params)]` with `id=N`, `cargo aura` CLI, format wrappers.
-- **AURA migration skill** (`skills/02-frameworks/aura-migration.md`) — truce→AURA step-by-step: macro→trait, params IDs, editor switch, build, findings reference.
+- **AURA skill pack** (`skills/02-frameworks/aura.md`) — PluginLogic, `#[derive(Params)]` with `id=N`, `cargo aura` CLI, format wrappers. Embedded in catalog → `agal skills sync --only frameworks` / `frameworks/aura`.
+- **AURA migration skill** (`skills/02-frameworks/aura-migration.md`) — truce→AURA step-by-step: macro→trait, params IDs, editor switch, build, findings reference. Embedded → `frameworks/aura-migration`.
 - **Slint skill expanded** (`skills/04-ui/slint.md`) — AuraSlintEditor host-embed, @aura widget catalog, callback wiring, aura-build pipeline, Lx* shared components.
 - **`aura.toml` detection** — auto-detected; enables AURA-specific editor migration path.
 - **AURA-specific findings:**

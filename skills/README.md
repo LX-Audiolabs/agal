@@ -53,7 +53,7 @@ Writes to `<workspace>/agal/skills/` and refreshes **`agal/AGAL.md`**
 |-------|------|------|
 | **core** (default) | `00-core/` | DSP realtime, correctness, audio thread boundary, biquad |
 | **policy** | `01-policy/` | caveman, ponytail (style — opt-in) |
-| **frameworks** | `02-frameworks/` | framework patterns |
+| **frameworks** | `02-frameworks/` | framework patterns, AURA, truce→AURA migration |
 | **formats** | `03-formats/` | CLAP, VST3, LV2 |
 | **ui** | `04-ui/` | Slint, egui, iced, vizia |
 | **migrations** | `05-migrations/` | e.g. nih-plug → nice-plug |
