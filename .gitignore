@@ -14,3 +14,4 @@ crates/core/tests/fixtures/**/_test_*/
 
 # local planning (not for public repo)
 /TODO*.md
+AGENTS.md

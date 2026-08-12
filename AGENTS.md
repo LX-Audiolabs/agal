@@ -77,6 +77,11 @@ Rust **1.85+** (edition 2024).
 Private commit identity & auth live in **`AGENTS.local.md`** (gitignored).  
 Agents: if that file exists, prefer it for git author / push auth hints.
 
+## github commits & push
+
+Commits: `user.name=lxndrbe` · `user.email=ardvinnamoon@gmail.com`  
+GitHub auth: `github.user=lxndrbe`
+
 ## Do not
 
 - Expand policy into this file (link skills)

@@ -1,8 +1,0 @@
-# AGENTS.local.md — private (not versioned)
-
-Copy to `AGENTS.local.md` and fill in. That file is gitignored.
-
-## github commits & push
-
-Commits: `user.name=YOUR_NAME` · `user.email=YOUR_EMAIL`  
-GitHub auth: `github.user=YOUR_GH_USER`
