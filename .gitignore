@@ -11,3 +11,6 @@ crates/core/tests/fixtures/**/_test_*/
 
 # private agent identity (email, tokens, machine paths)
 /AGENTS.local.md
+
+# local planning (not for public repo)
+/TODO*.md
