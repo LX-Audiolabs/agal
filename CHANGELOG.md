@@ -6,9 +6,11 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
-## [0.7.0] — Unreleased
+## [0.7.0] — 2026-08-12
 
 ### Fixed
+- **API map `dyn`/`impl Trait` types** — `type_to_compact` keeps `&dyn Params` / `impl Trait` instead of collapsing to ellipsis.
+- **Fixture test race** — all `scan_fixture` tests take a shared mutex so suppress-config rewrites cannot hide `migration_legacy`.
 - **`clap` CLI crate ≠ CLAP format** — bare dependency/`use clap` no longer marks workspaces as CLAP plugin format. Only `clap-sys` (and format wrappers like `aura-clap`) map to CLAP. Fixes false positives on CLI tools (e.g. CODEWIG).
 - **Quiet non-plugin maps** — skip empty `## plugins` / `## crates` sections; skip migration block when `total_plugins == 0`. Agent summary framing: "audio workspace" (not only plugins).
 
@@ -23,6 +25,8 @@ All notable changes to `agentic-audiolab` / `agal`.
   - `aura_truce_migration` (info) — truce imports/macros detected in AURA plugin.
 - **`cargo aura` tool hint** — info finding with build/install fix when AURA workspace detected.
 - **`has_explicit_id` on `ParamField`** — ast extraction now captures `id = N` from `#[param(...)]`.
+- **Aider-style API map (`api_surface`)** — public Rust symbols extracted as ranked signatures + source `file` (line numbers deferred; span-locations not enabled yet). Stored in `AstSummary.api_surface`; capped via new `[map]` config (`api_tokens`, `max_symbols_per_crate`; `rank` reserved). Kind-priority sort (traits/types before free fns). Shown in `notes/<crate>.md`; plugin notes list 1-hop dep surfaces.
+- **`[map]` config section** in `agal.toml`: budget and ranking controls for the API surface strip.
 
 ### Changed
 - **AURA-first defaults** — `default_migrations()` context-aware: `aura.toml` → `truce-slint → aura-editor`, else legacy.

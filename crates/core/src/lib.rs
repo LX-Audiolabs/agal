@@ -584,17 +584,6 @@ fn build_audiolabs(
         }
 
         let mut ast_summary = ast::analyze_crate_with_options(path, analyze_opts);
-        // Plugins don't need full public_api noise; crates do. Keep public_api for crates only.
-        if kind == "plugin" {
-            ast_summary.public_api.clear();
-        }
-        // Cap public_api size for huge crates — keep sorted first 80.
-        if ast_summary.public_api.len() > 80 {
-            let truncated: BTreeSet<String> =
-                ast_summary.public_api.iter().take(80).cloned().collect();
-            ast_summary.public_api = truncated;
-            // note via process_method_count style? leave as-is; findings can mention later
-        }
 
         // Extract [features] from Cargo.toml
         if let Some(features_table) = cargo.get("features").and_then(|v| v.as_table()) {
@@ -925,6 +914,86 @@ fn build_audiolabs(
     })
 }
 
+/// Rank and cap API surfaces after the full graph is known.
+///
+/// - Plugins get no public API strip (their surface is plugin hooks / params, already noted).
+/// - Crates are sorted by symbol kind priority and capped per `[map]` config.
+/// - `cfg.rank` is reserved (`inbound_deps` not applied yet); kind priority only.
+fn rank_and_cap_api_surfaces(graph: &mut Audiolabs, cfg: &config::MapConfig) {
+    // First pass: per-crate cap + total count.
+    let mut max_per_crate = cfg.max_symbols_per_crate;
+    for n in &mut graph.nodes {
+        let Some(ast) = n.ast_summary.as_mut() else { continue };
+        if n.kind == "plugin" {
+            ast.public_api.clear();
+            ast.api_surface.clear();
+            ast.api_surface_total = 0;
+            continue;
+        }
+        // Keep the legacy name set capped for JSON size.
+        if ast.public_api.len() > 80 {
+            let truncated: BTreeSet<String> =
+                ast.public_api.iter().take(80).cloned().collect();
+            ast.public_api = truncated;
+        }
+        sort_api_surface(ast);
+        ast.api_surface_total = ast.api_surface.len();
+        if ast.api_surface.len() > max_per_crate {
+            ast.api_surface.truncate(max_per_crate);
+        }
+    }
+
+    // Second pass: global approximate token cap (char budget = tokens * 4).
+    // If over budget, lower the per-crate limit uniformly until it fits or hits a floor.
+    let budget_chars = cfg.api_tokens.saturating_mul(4);
+    loop {
+        let total_chars: usize = graph
+            .nodes
+            .iter()
+            .filter_map(|n| n.ast_summary.as_ref())
+            .map(|a| a.api_surface.iter().map(|s| s.signature.len()).sum::<usize>())
+            .sum();
+        if total_chars <= budget_chars || max_per_crate <= 3 {
+            break;
+        }
+        max_per_crate -= 1;
+        for n in &mut graph.nodes {
+            let Some(ast) = n.ast_summary.as_mut() else { continue };
+            if ast.api_surface_total > max_per_crate {
+                ast.api_surface.truncate(max_per_crate);
+            }
+        }
+    }
+}
+
+fn sort_api_surface(ast: &mut ast::AstSummary) {
+    ast.api_surface.sort_by(|a, b| {
+        api_symbol_priority(a)
+            .cmp(&api_symbol_priority(b))
+            .then_with(|| a.file.cmp(&b.file))
+            .then_with(|| a.line.cmp(&b.line))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+}
+
+/// Kind priority for API strip: hooks → traits/types → free fns → impl/mod noise.
+fn api_symbol_priority(s: &ast::ApiSymbol) -> u8 {
+    match s.kind.as_str() {
+        "fn" if s.name == "process" => 0,
+        "fn" if s.name == "editor" => 1,
+        "trait" => 2,
+        "struct" => 3,
+        "enum" => 4,
+        "type" => 5,
+        "fn" => 6,
+        "const" => 7,
+        "static" => 8,
+        "impl" => 9,
+        "mod" => 10,
+        _ => 11,
+    }
+}
+
 fn now_rfc3339() -> String {
     let now = std::time::SystemTime::now();
     let duration = now
@@ -1076,6 +1145,7 @@ fn is_interesting_event(event: &notify::Event) -> bool {
 fn generate_one_shot(project_root: &Path, options: &GenerateOptions) -> Result<(), String> {
     let project_config = config::ProjectConfig::load(project_root);
     let mut graph = build_audiolabs(project_root, &project_config, options.verbose)?;
+    rank_and_cap_api_surfaces(&mut graph, &project_config.map);
 
     let output_dir = options
         .output_dir_override
@@ -1282,7 +1352,9 @@ fn generate_one_shot(project_root: &Path, options: &GenerateOptions) -> Result<(
 /// Scan workspace into an in-memory graph (no file writes). Useful for tests and `agal doctor`.
 pub fn scan(project_root: &Path, verbose: bool) -> Result<Audiolabs, String> {
     let project_config = config::ProjectConfig::load(project_root);
-    build_audiolabs(project_root, &project_config, verbose)
+    let mut graph = build_audiolabs(project_root, &project_config, verbose)?;
+    rank_and_cap_api_surfaces(&mut graph, &project_config.map);
+    Ok(graph)
 }
 
 /// External tool checklist (Clippy / clap-validator) + graph-aware hints.

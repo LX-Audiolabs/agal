@@ -7,6 +7,7 @@ use syn::{
     Fields, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemMacro, ItemStruct, ItemTrait, ItemUse,
     Visibility,
 };
+use syn::spanned::Spanned;
 
 /// One parameter field on a Params struct.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -21,6 +22,18 @@ pub struct ParamField {
     /// True when #[param] has an explicit `id = N` (AURA required, truce optional).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub has_explicit_id: bool,
+}
+
+/// Ranked public API surface entry: signature + file (line when available).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApiSymbol {
+    pub kind: String,
+    pub name: String,
+    pub signature: String,
+    pub file: String,
+    /// 1-based line when span locations are available; `0` = file only.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub line: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -60,6 +73,12 @@ pub struct AstSummary {
     /// Public crate surface: `struct Biquad`, `enum Mode`, `fn foo`, `mod bar`.
     #[serde(skip_serializing_if = "BTreeSet::is_empty", default)]
     pub public_api: BTreeSet<String>,
+    /// Aider-style ranked public signatures (file:line). Capped at render/json time.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub api_surface: Vec<ApiSymbol>,
+    /// Total public symbols before capping (rest = count only).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub api_surface_total: usize,
     #[serde(skip_serializing_if = "BTreeSet::is_empty", default)]
     pub slint_components: BTreeSet<String>,
     /// Components this crate *exports* (export component X in .slint).
@@ -381,6 +400,16 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
             }
         }
 
+        // Surface trait impls only; inherent impls are noisy and their methods are captured separately.
+        if node.trait_.is_some() {
+            self.record_api(
+                "impl",
+                &signature_for_impl(node),
+                signature_for_impl(node),
+                item_line(node),
+            );
+        }
+
         syn::visit::visit_item_impl(self, node);
         self.in_plugin_logic_impl = prev_logic;
         self.in_plugin_impl = prev_plugin;
@@ -413,7 +442,12 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
         let fn_name = node.sig.ident.to_string();
         let is_pub = matches!(node.vis, Visibility::Public(_));
         if is_pub {
-            self.summary.public_api.insert(format!("fn {}", fn_name));
+            self.record_api(
+                "fn",
+                &fn_name,
+                signature_for_fn(&node.sig),
+                item_line(node),
+            );
         }
         match fn_name.as_str() {
             "process" => {
@@ -459,7 +493,7 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
     fn visit_item_struct(&mut self, node: &'ast ItemStruct) {
         let name = node.ident.to_string();
         if matches!(node.vis, Visibility::Public(_)) {
-            self.summary.public_api.insert(format!("struct {}", name));
+            self.record_api("struct", &name, signature_for_struct(node), item_line(node));
         }
         if name.ends_with("Params") {
             self.summary.params_structs.insert(name.clone());
@@ -499,21 +533,78 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
     }
 
     fn visit_item_enum(&mut self, node: &'ast ItemEnum) {
+        let name = node.ident.to_string();
         if matches!(node.vis, Visibility::Public(_)) {
-            self.summary
-                .public_api
-                .insert(format!("enum {}", node.ident));
+            let generics = generics_to_compact(&node.generics);
+            self.record_api(
+                "enum",
+                &name,
+                format!("enum {}{}", name, generics),
+                item_line(node),
+            );
         }
         syn::visit::visit_item_enum(self, node);
     }
 
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        let name = node.ident.to_string();
         if matches!(node.vis, Visibility::Public(_)) {
-            self.summary
-                .public_api
-                .insert(format!("trait {}", node.ident));
+            let generics = generics_to_compact(&node.generics);
+            self.record_api(
+                "trait",
+                &name,
+                format!("trait {}{}", name, generics),
+                item_line(node),
+            );
         }
         syn::visit::visit_item_trait(self, node);
+    }
+
+    fn visit_item_type(&mut self, node: &'ast syn::ItemType) {
+        let name = node.ident.to_string();
+        if matches!(node.vis, Visibility::Public(_)) {
+            self.record_api(
+                "type",
+                &name,
+                format!("type {} = {}", name, type_to_compact(&node.ty)),
+                item_line(node),
+            );
+        }
+        syn::visit::visit_item_type(self, node);
+    }
+
+    fn visit_item_const(&mut self, node: &'ast syn::ItemConst) {
+        let name = node.ident.to_string();
+        if matches!(node.vis, Visibility::Public(_)) {
+            self.record_api(
+                "const",
+                &name,
+                format!("const {}: {}", name, type_to_compact(&node.ty)),
+                item_line(node),
+            );
+        }
+        syn::visit::visit_item_const(self, node);
+    }
+
+    fn visit_item_static(&mut self, node: &'ast syn::ItemStatic) {
+        let name = node.ident.to_string();
+        if matches!(node.vis, Visibility::Public(_)) {
+            self.record_api(
+                "static",
+                &name,
+                format!("static {}: {}", name, type_to_compact(&node.ty)),
+                item_line(node),
+            );
+        }
+        syn::visit::visit_item_static(self, node);
+    }
+
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        let name = node.ident.to_string();
+        if matches!(node.vis, Visibility::Public(_)) {
+            self.record_api("mod", &name, format!("pub mod {}", name), item_line(node));
+        }
+        syn::visit::visit_item_mod(self, node);
     }
 
     fn visit_item_use(&mut self, node: &'ast ItemUse) {
@@ -566,6 +657,22 @@ impl<'a> AudioPluginVisitor<'a> {
             .entry(self.current_file.clone())
             .or_default()
             .insert(symbol.to_string());
+    }
+
+    fn record_api(&mut self, kind: &str, name: &str, signature: String, line: usize) {
+        let label = if kind == "impl" {
+            name.into()
+        } else {
+            format!("{} {}", kind, name)
+        };
+        self.summary.public_api.insert(label);
+        self.summary.api_surface.push(ApiSymbol {
+            kind: kind.into(),
+            name: name.into(),
+            signature,
+            file: self.current_file.clone(),
+            line,
+        });
     }
 }
 
@@ -660,13 +767,78 @@ fn extract_int_assign(tokens: &str, key: &str) -> Option<i64> {
 fn type_to_compact(ty: &syn::Type) -> String {
     match ty {
         syn::Type::Path(p) => path_to_compact(&p.path),
-        syn::Type::Reference(r) => format!("&{}", type_to_compact(&r.elem)),
+        syn::Type::Reference(r) => {
+            let mut s = String::from("&");
+            if let Some(lt) = &r.lifetime {
+                s.push_str(&lt.ident.to_string());
+                s.push(' ');
+            }
+            if r.mutability.is_some() {
+                s.push_str("mut ");
+            }
+            s.push_str(&type_to_compact(&r.elem));
+            s
+        }
         syn::Type::Tuple(t) => {
             let inner: Vec<_> = t.elems.iter().map(type_to_compact).collect();
             format!("({})", inner.join(", "))
         }
         syn::Type::Array(a) => format!("[{}]", type_to_compact(&a.elem)),
         syn::Type::Slice(s) => format!("[{}]", type_to_compact(&s.elem)),
+        syn::Type::Ptr(p) => {
+            let mut s = match &p.mutability {
+                syn::PointerMutability::Const(_) => String::from("*const "),
+                syn::PointerMutability::Mut(_) => String::from("*mut "),
+            };
+            s.push_str(&type_to_compact(&p.elem));
+            s
+        }
+        syn::Type::Paren(p) => type_to_compact(&p.elem),
+        syn::Type::Group(g) => type_to_compact(&g.elem),
+        syn::Type::TraitObject(t) => {
+            let bounds: Vec<String> = t
+                .bounds
+                .iter()
+                .filter_map(|b| match b {
+                    syn::TypeParamBound::Trait(tb) => Some(path_to_compact(&tb.path)),
+                    syn::TypeParamBound::Lifetime(lt) => Some(format!("'{}", lt.ident)),
+                    _ => None,
+                })
+                .collect();
+            if bounds.is_empty() {
+                "dyn …".into()
+            } else {
+                format!("dyn {}", bounds.join(" + "))
+            }
+        }
+        syn::Type::ImplTrait(i) => {
+            let bounds: Vec<String> = i
+                .bounds
+                .iter()
+                .filter_map(|b| match b {
+                    syn::TypeParamBound::Trait(tb) => Some(path_to_compact(&tb.path)),
+                    syn::TypeParamBound::Lifetime(lt) => Some(format!("'{}", lt.ident)),
+                    _ => None,
+                })
+                .collect();
+            if bounds.is_empty() {
+                "impl …".into()
+            } else {
+                format!("impl {}", bounds.join(" + "))
+            }
+        }
+        syn::Type::FnPtr(f) => {
+            let args: Vec<String> = f
+                .inputs
+                .iter()
+                .map(|arg| type_to_compact(&arg.ty))
+                .collect();
+            let ret = match &f.output {
+                syn::ReturnType::Default => String::new(),
+                syn::ReturnType::Type(_, ty) => format!(" -> {}", type_to_compact(ty)),
+            };
+            format!("fn({}){}", args.join(", "), ret)
+        }
         _ => "…".to_string(),
     }
 }
@@ -697,6 +869,118 @@ fn path_to_compact(path: &syn::Path) -> String {
         .collect();
     // Prefer last segment for readability: truce::params::FloatParam → FloatParam
     segs.last().cloned().unwrap_or_default()
+}
+
+fn signature_for_fn(sig: &syn::Signature) -> String {
+    let name = sig.ident.to_string();
+    let generics = generics_to_compact(&sig.generics);
+    let args: Vec<String> = sig
+        .inputs
+        .iter()
+        .map(|arg| match arg {
+            syn::FnArg::Receiver(r) => {
+                let mut s = String::new();
+                if let syn::ReceiverKind::Reference(_, lt, mutability) = &r.kind {
+                    s.push('&');
+                    if let Some(lt) = lt {
+                        s.push_str(&lt.ident.to_string());
+                        s.push(' ');
+                    }
+                    if mutability.is_some() {
+                        s.push_str("mut ");
+                    }
+                }
+                s.push_str("self");
+                s
+            }
+            syn::FnArg::Typed(p) => {
+                let pat = pat_to_compact(&p.pat);
+                let ty = type_to_compact(&p.ty);
+                format!("{}: {}", pat, ty)
+            }
+        })
+        .collect();
+    let ret = match &sig.output {
+        syn::ReturnType::Default => String::new(),
+        syn::ReturnType::Type(_, ty) => format!(" -> {}", type_to_compact(ty)),
+    };
+    format!("fn {}{}({}){}", name, generics, args.join(", "), ret)
+}
+
+fn generics_to_compact(generics: &syn::Generics) -> String {
+    if generics.params.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = generics
+        .params
+        .iter()
+        .map(|p| match p {
+            syn::GenericParam::Type(tp) => tp.ident.to_string(),
+            syn::GenericParam::Lifetime(_) => String::new(),
+            syn::GenericParam::Const(cp) => {
+                format!("const {}: {}", cp.ident, type_to_compact(&cp.ty))
+            }
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", parts.join(", "))
+    }
+}
+
+fn pat_to_compact(pat: &syn::Pat) -> String {
+    match pat {
+        syn::Pat::Ident(i) => i.ident.to_string(),
+        syn::Pat::Wild(_) => "_".into(),
+        syn::Pat::Reference(r) => pat_to_compact(&r.pat),
+        syn::Pat::Tuple(t) => {
+            let inner: Vec<_> = t.elems.iter().map(pat_to_compact).collect();
+            format!("({})", inner.join(", "))
+        }
+        _ => "_".into(),
+    }
+}
+
+fn signature_for_struct(node: &ItemStruct) -> String {
+    let name = node.ident.to_string();
+    let generics = generics_to_compact(&node.generics);
+    match &node.fields {
+        Fields::Unit => format!("struct {}{}", name, generics),
+        fields => {
+            let field_str = fields
+                .iter()
+                .filter_map(|f| {
+                    let ident = f.ident.as_ref()?;
+                    Some(format!("{}: {}", ident, type_to_compact(&f.ty)))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            if field_str.len() > 60 {
+                format!("struct {}{} {{ … }}", name, generics)
+            } else {
+                format!("struct {}{} {{ {} }}", name, generics, field_str)
+            }
+        }
+    }
+}
+
+fn signature_for_impl(node: &ItemImpl) -> String {
+    let self_ty = type_to_compact(&node.self_ty);
+    if let Some((trait_, _)) = &node.trait_ {
+        let trait_name = path_to_compact(trait_);
+        format!("impl {} for {}", trait_name, self_ty)
+    } else {
+        format!("impl {}", self_ty)
+    }
+}
+
+fn item_line<T: Spanned>(_node: &T) -> usize {
+    // ponytail: proc_macro2 span-locations not enabled (crashed on Windows in tests).
+    // Notes render `file` only when line is 0; re-enable later with span-locations feature.
+    let _ = _node;
+    0
 }
 
 /// Scan a .slint file for LX component usage and exports.
@@ -811,12 +1095,20 @@ fn use_tree_to_string(tree: &syn::UseTree) -> String {
 mod tests {
     use super::*;
 
+    fn unique_tmp(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "agal_test_{label}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
     #[test]
     fn detects_aura_editor_adapter_from_glob_use() {
-        let tmp = std::env::temp_dir().join(format!(
-            "agal_test_aura_editor_{}",
-            std::process::id()
-        ));
+        let tmp = unique_tmp("aura_editor");
         let _ = fs::remove_dir_all(&tmp);
         let src = tmp.join("src");
         fs::create_dir_all(&src).unwrap();
@@ -830,5 +1122,72 @@ mod tests {
             "expected aura-editor adapter, got {:?}",
             summary.imported_editor_adapters
         );
+    }
+
+    #[test]
+    fn api_surface_keeps_dyn_trait_and_signatures() {
+        let tmp = unique_tmp("api_surface");
+        let _ = fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(
+            src.join("lib.rs"),
+            r#"
+                pub trait Params {
+                    fn set_plain(&self, id: u32, v: f64);
+                }
+                pub fn apply_event(params: &dyn Params, id: u32) {
+                    let _ = (params, id);
+                }
+                pub fn touch(x: &mut i32, p: &dyn Params) {
+                    let _ = (x, p);
+                }
+                pub struct Gain { pub amount: f32 }
+            "#,
+        )
+        .unwrap();
+
+        let summary = analyze_crate_with_options(&tmp, AnalyzeOptions::default());
+        let _ = fs::remove_dir_all(&tmp);
+
+        let sigs: Vec<&str> = summary
+            .api_surface
+            .iter()
+            .map(|s| s.signature.as_str())
+            .collect();
+
+        assert!(
+            sigs.iter().any(|s| s.contains("trait Params")),
+            "trait missing: {sigs:?}"
+        );
+        assert!(
+            sigs.iter()
+                .any(|s| s.contains("fn apply_event") && s.contains("&dyn Params")),
+            "dyn Params must not collapse to ellipsis: {sigs:?}"
+        );
+        assert!(
+            sigs.iter()
+                .any(|s| s.contains("fn touch") && s.contains("&mut i32")),
+            "mut ref missing: {sigs:?}"
+        );
+        assert!(
+            sigs.iter().any(|s| s.starts_with("struct Gain")),
+            "struct missing: {sigs:?}"
+        );
+        assert!(
+            summary.public_api.iter().any(|s| s == "fn apply_event"),
+            "legacy public_api label: {:?}",
+            summary.public_api
+        );
+    }
+
+    #[test]
+    fn type_to_compact_dyn_and_ref() {
+        let ty: syn::Type = syn::parse_str("&dyn Params").unwrap();
+        assert_eq!(type_to_compact(&ty), "&dyn Params");
+        let ty: syn::Type = syn::parse_str("&mut Foo").unwrap();
+        assert_eq!(type_to_compact(&ty), "&mut Foo");
+        let ty: syn::Type = syn::parse_str("impl Iterator + Send").unwrap();
+        assert_eq!(type_to_compact(&ty), "impl Iterator + Send");
     }
 }

@@ -22,6 +22,12 @@
 # node = "my-plugin"          # name, path, or id; omit / "*" = all
 # reason = "intentional product surface"
 
+# --- API map budget (Aider-style ranked signatures) ---
+# [map]
+# api_tokens = 800           # approximate signature token budget across workspace
+# max_symbols_per_crate = 12 # top-K signatures shown per crate
+# rank = "inbound_deps"      # reserved: "inbound_deps" (future: refcount / pagerank)
+
 # --- dogfood extras (LX / AURA + Slint) ---
 # ui_crates = ["lx-ui-slint"]          # also auto-detected via `export component Lx*`
 # ipc_hubs = ["lx-shm", "lx-analysis"]

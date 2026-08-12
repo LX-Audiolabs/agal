@@ -951,8 +951,8 @@ fn plugin_line(n: &Node) -> String {
 fn crate_line(n: &Node) -> String {
     let mut extras = Vec::new();
     if let Some(ast) = &n.ast_summary {
-        if !ast.public_api.is_empty() {
-            extras.push(format!("api={}", ast.public_api.len()));
+        if ast.api_surface_total > 0 {
+            extras.push(format!("api={}/{}", ast.api_surface.len(), ast.api_surface_total));
         }
         if !ast.slint_exports.is_empty() {
             extras.push(format!("slint_export={}", ast.slint_exports.len()));

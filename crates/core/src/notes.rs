@@ -310,6 +310,37 @@ fn render_auto_section(
         let _ = writeln!(s);
     }
 
+    // L1½: ranked signatures for this crate; for plugins, show 1-hop dep surfaces.
+    if n.kind == "crate" || n.kind == "member" {
+        if let Some(ast) = &n.ast_summary {
+            if !ast.api_surface.is_empty() {
+                let _ = writeln!(s, "## api surface");
+                for sym in &ast.api_surface {
+                    let loc = if sym.line == 0 {
+                        sym.file.clone()
+                    } else {
+                        format!("{}:{}", sym.file, sym.line)
+                    };
+                    let _ = writeln!(s, "- `{}` · `{}`", sym.signature, loc);
+                }
+                if ast.api_surface_total > ast.api_surface.len() {
+                    let _ = writeln!(
+                        s,
+                        "- … +{} more public symbols",
+                        ast.api_surface_total - ast.api_surface.len()
+                    );
+                }
+                let _ = writeln!(s);
+            }
+        }
+    } else if n.kind == "plugin" {
+        let dep_surface = render_plugin_dep_surface(n, graph, 2);
+        if !dep_surface.is_empty() {
+            let _ = writeln!(s, "## api surface (workspace deps)");
+            let _ = writeln!(s, "{}", dep_surface);
+        }
+    }
+
     if let Some(fs) = findings_by_node.get(&n.id) {
         let _ = writeln!(s, "## findings");
         for f in fs {
@@ -535,4 +566,43 @@ fn short_id(id: &str) -> String {
     id.trim_start_matches("plugins/")
         .trim_start_matches("crates/")
         .to_string()
+}
+
+/// Top symbols from a plugin's workspace dependencies (focus + 1-hop API strip).
+fn render_plugin_dep_surface(n: &Node, graph: &Audiolabs, per_dep: usize) -> String {
+    let mut s = String::new();
+    let dep_ids: Vec<&str> = n.internal_deps.iter().map(|d| d.as_str()).collect();
+    if dep_ids.is_empty() {
+        return s;
+    }
+    for dep_id in dep_ids.iter().take(4) {
+        let Some(dep_node) = graph.nodes.iter().find(|x| x.id == *dep_id) else {
+            continue;
+        };
+        let Some(ast) = &dep_node.ast_summary else { continue };
+        if ast.api_surface.is_empty() {
+            continue;
+        }
+        let _ = writeln!(
+            &mut s,
+            "- from `{}` (`{}`):",
+            dep_node.name, short_id(dep_id)
+        );
+        for sym in ast.api_surface.iter().take(per_dep) {
+            let loc = if sym.line == 0 {
+                sym.file.clone()
+            } else {
+                format!("{}:{}", sym.file, sym.line)
+            };
+            let _ = writeln!(&mut s, "  - `{}` · `{}`", sym.signature, loc);
+        }
+        if ast.api_surface_total > per_dep {
+            let _ = writeln!(
+                &mut s,
+                "  - … +{} more",
+                ast.api_surface_total - per_dep
+            );
+        }
+    }
+    s
 }

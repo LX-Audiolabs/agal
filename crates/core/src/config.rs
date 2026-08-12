@@ -37,6 +37,46 @@ pub struct ProjectConfig {
     /// HTML graph view preferences.
     #[serde(default)]
     pub view: ViewConfig,
+    /// API-map token budget and ranking.
+    #[serde(default)]
+    pub map: MapConfig,
+}
+
+/// API surface map settings (`[map]` in `agal.toml`).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MapConfig {
+    /// Approximate token budget for ranked signatures across the workspace.
+    #[serde(default = "default_api_tokens")]
+    pub api_tokens: usize,
+    /// Max ranked symbols shown per crate.
+    #[serde(default = "default_max_symbols_per_crate")]
+    pub max_symbols_per_crate: usize,
+    /// Ranking strategy key (reserved). Kind-priority sort is used today;
+    /// `"inbound_deps"` / pagerank are planned, not yet applied.
+    #[serde(default = "default_rank")]
+    pub rank: String,
+}
+
+impl Default for MapConfig {
+    fn default() -> Self {
+        Self {
+            api_tokens: default_api_tokens(),
+            max_symbols_per_crate: default_max_symbols_per_crate(),
+            rank: default_rank(),
+        }
+    }
+}
+
+fn default_api_tokens() -> usize {
+    800
+}
+
+fn default_max_symbols_per_crate() -> usize {
+    12
+}
+
+fn default_rank() -> String {
+    "inbound_deps".into()
 }
 
 /// HTML graph view settings.
