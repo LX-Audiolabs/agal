@@ -21,6 +21,8 @@ Do **not** invent parallel style guides here — edit the skill files if policy 
 
 ## What this product is
 
+AI layer for LX plugin work. **AURA** is the framework (runtime / formats / CLI). **AGAL** orients agents on top. Together: **JUCE-like** plugin work with AI — **Rust + Slint**, not C++.
+
 Orientation layer for AI-assisted Rust audio workspaces:
 
 | | |
