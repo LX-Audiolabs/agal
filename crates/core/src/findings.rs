@@ -131,10 +131,7 @@ pub fn actionable(findings: &[Finding]) -> impl Iterator<Item = &Finding> {
 
 /// Drop findings matched by `[[suppress]]` rules in `agal.toml`.
 /// Returns `(kept, suppressed_count)`.
-pub fn apply_suppressions(
-    findings: Vec<Finding>,
-    rules: &[SuppressRule],
-) -> (Vec<Finding>, usize) {
+pub fn apply_suppressions(findings: Vec<Finding>, rules: &[SuppressRule]) -> (Vec<Finding>, usize) {
     if rules.is_empty() {
         return (findings, 0);
     }
@@ -211,7 +208,11 @@ pub fn analyze(
             s.split(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_')
                 .find(|t| t.ends_with("-editor") && *t != "truce-slint")
         })
-        .unwrap_or(if is_aura_ws { "aura-editor" } else { "lx-slint-editor" });
+        .unwrap_or(if is_aura_ws {
+            "aura-editor"
+        } else {
+            "lx-slint-editor"
+        });
 
     /// Node uses AURA framework (not truce/nih-plug/clack).
     fn is_aura_plugin(p: &Node) -> bool {
@@ -352,10 +353,12 @@ pub fn analyze(
             p.frameworks.iter().any(|f| f == "slint") || !ast.slint_components.is_empty();
         if has_slint
             && ast.imported_editor_adapters.is_empty()
-            && !p
-                .frameworks
-                .iter()
-                .any(|f| f == "lx-slint-editor" || f == "truce-slint" || f == "aura-editor" || f.ends_with("-editor"))
+            && !p.frameworks.iter().any(|f| {
+                f == "lx-slint-editor"
+                    || f == "truce-slint"
+                    || f == "aura-editor"
+                    || f.ends_with("-editor")
+            })
         {
             out.push(
                 Finding::new(
@@ -493,7 +496,11 @@ pub fn analyze(
                 .map(|f| f.name.clone())
                 .collect();
             if !fields_without_id.is_empty() {
-                let sample: Vec<&str> = fields_without_id.iter().take(8).map(|s| s.as_str()).collect();
+                let sample: Vec<&str> = fields_without_id
+                    .iter()
+                    .take(8)
+                    .map(|s| s.as_str())
+                    .collect();
                 let more = if fields_without_id.len() > 8 {
                     format!(" (+{} more)", fields_without_id.len() - 8)
                 } else {
@@ -1018,10 +1025,7 @@ mod tests {
         assert!(all.is_empty());
         assert_eq!(n_all, 1);
 
-        let (noop, n0) = apply_suppressions(
-            vec![Finding::new(Severity::Info, "x", "y")],
-            &[],
-        );
+        let (noop, n0) = apply_suppressions(vec![Finding::new(Severity::Info, "x", "y")], &[]);
         assert_eq!(noop.len(), 1);
         assert_eq!(n0, 0);
     }

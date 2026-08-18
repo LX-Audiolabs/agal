@@ -381,10 +381,7 @@ fn render_graph_atoms(
     ));
 
     if !n.frameworks.is_empty() {
-        atoms.push((
-            "fact",
-            format!("frameworks={}", n.frameworks.join("+")),
-        ));
+        atoms.push(("fact", format!("frameworks={}", n.frameworks.join("+"))));
     }
 
     match n.migration_status.as_deref() {
@@ -422,10 +419,7 @@ fn render_graph_atoms(
             e.kind.as_str(),
             "uses_ui" | "ipc_peer" | "runtime_depends_on"
         ) {
-            atoms.push((
-                "fact",
-                format!("{}→{}", e.kind, short_id(&e.to)),
-            ));
+            atoms.push(("fact", format!("{}→{}", e.kind, short_id(&e.to))));
         }
     }
 
@@ -579,14 +573,17 @@ fn render_plugin_dep_surface(n: &Node, graph: &Audiolabs, per_dep: usize) -> Str
         let Some(dep_node) = graph.nodes.iter().find(|x| x.id == *dep_id) else {
             continue;
         };
-        let Some(ast) = &dep_node.ast_summary else { continue };
+        let Some(ast) = &dep_node.ast_summary else {
+            continue;
+        };
         if ast.api_surface.is_empty() {
             continue;
         }
         let _ = writeln!(
             &mut s,
             "- from `{}` (`{}`):",
-            dep_node.name, short_id(dep_id)
+            dep_node.name,
+            short_id(dep_id)
         );
         for sym in ast.api_surface.iter().take(per_dep) {
             let loc = if sym.line == 0 {
@@ -597,11 +594,7 @@ fn render_plugin_dep_surface(n: &Node, graph: &Audiolabs, per_dep: usize) -> Str
             let _ = writeln!(&mut s, "  - `{}` · `{}`", sym.signature, loc);
         }
         if ast.api_surface_total > per_dep {
-            let _ = writeln!(
-                &mut s,
-                "  - … +{} more",
-                ast.api_surface_total - per_dep
-            );
+            let _ = writeln!(&mut s, "  - … +{} more", ast.api_surface_total - per_dep);
         }
     }
     s

@@ -75,11 +75,7 @@ pub fn render_agent_md(graph: &Audiolabs, skills_dir: Option<&Path>) -> String {
     write_migration_section(&mut s, &graph.migration_summary);
 
     // Plugins (omit section when none — tool/framework workspaces stay quiet)
-    let plugins: Vec<&crate::Node> = graph
-        .nodes
-        .iter()
-        .filter(|n| n.kind == "plugin")
-        .collect();
+    let plugins: Vec<&crate::Node> = graph.nodes.iter().filter(|n| n.kind == "plugin").collect();
     if !plugins.is_empty() {
         let _ = writeln!(s, "## plugins");
         for n in plugins {
@@ -252,7 +248,7 @@ pub fn render_agent_md(graph: &Audiolabs, skills_dir: Option<&Path>) -> String {
          4. **L2** **`agal.delta.md`** if present.  \n\
          5. **L1** **`notes/<focus>.md`** (**one** note; scan `[ATOM]` first).  \n\
          6. **loadout** — skills on demand from `AGAL.md` (never dump all; **≤1** skill file).  \n\
-         7. **L0** escalate: `agal --plugin NAME .` slice, or `agal.json`.  \n\
+         7. **L0** escalate: `agal --plugin NAME .`, `agal impact NAME`, `agal context --focus NAME`, or `agal.json`.  \n\
          8. HTML is for humans (overview); agents prefer md/json.  \n\
          \n\
          Skills are **not** auto-copied on generate — `agal skills sync` (default: **core** only).  \n\
@@ -370,7 +366,7 @@ pub fn render_agal_md(
          4. **L2** — `agal.delta.md` if present  \n\
          5. **L1** — `notes/<focus>.md` (atoms → open → intent)  \n\
          6. **loadout** — one skill from the pack list below (match `triggers`)  \n\
-         7. **L0** escalate — `agal --plugin NAME .` slice, or `agal.json`  \n\
+         7. **L0** escalate — `agal --plugin NAME .`, `agal impact NAME`, `agal context --focus NAME`, or `agal.json`  \n\
          8. HTML / Cheatsheet are for humans\n"
     );
 
@@ -451,7 +447,10 @@ pub fn render_agal_md(
         "## Commands\n\n\
          ```bash\n\
          agal .                              # refresh map + AGAL.md + notes + html\n\
-         agal --plugin aether .              # + one-hop slice\n\
+         agal --plugin aether .              # + one-hop slice
+         agal impact aether                  # reverse dependencies on a plugin/crate
+         agal context --focus aether --budget 4000           # focused Markdown context pack
+         agal context --focus aether --budget 4000 --format json  # same as JSON\n\
          agal skills sync                    # default: core (00-core)\n\
          agal skills sync --preset slint-ui  # core + slint (loadout)\n\
          agal skills sync --only ui/slint    # single pack file\n\
@@ -513,7 +512,10 @@ pub fn refresh_agal_after_skills_sync(
             output_dir_name
         );
     } else {
-        println!("  agal: {}/AGAL.md (skills index refreshed)", output_dir_name);
+        println!(
+            "  agal: {}/AGAL.md (skills index refreshed)",
+            output_dir_name
+        );
     }
     Ok(())
 }
@@ -584,7 +586,12 @@ fn write_focus_findings_strip(s: &mut String, graph: &Audiolabs) {
          Fix these before feature work. Full list: `agal.agent.md`.\n"
     );
     for f in shown {
-        let mut line = format!("- [{}] **{}**: {}", f.severity, f.code, truncate_line(&f.message, 100));
+        let mut line = format!(
+            "- [{}] **{}**: {}",
+            f.severity,
+            f.code,
+            truncate_line(&f.message, 100)
+        );
         if let Some(node) = &f.node {
             line.push_str(&format!(" · `{}`", short_node(node)));
         }
@@ -952,7 +959,11 @@ fn crate_line(n: &Node) -> String {
     let mut extras = Vec::new();
     if let Some(ast) = &n.ast_summary {
         if ast.api_surface_total > 0 {
-            extras.push(format!("api={}/{}", ast.api_surface.len(), ast.api_surface_total));
+            extras.push(format!(
+                "api={}/{}",
+                ast.api_surface.len(),
+                ast.api_surface_total
+            ));
         }
         if !ast.slint_exports.is_empty() {
             extras.push(format!("slint_export={}", ast.slint_exports.len()));
@@ -1056,8 +1067,8 @@ pub fn plugin_slice(graph: &Audiolabs, plugin_name: &str) -> Option<serde_json::
 #[cfg(test)]
 mod tests {
     use super::{parse_skill_frontmatter, render_agal_md};
-    use crate::findings::{Finding, Severity};
     use crate::Audiolabs;
+    use crate::findings::{Finding, Severity};
 
     #[test]
     fn frontmatter_id_and_summary() {
@@ -1161,10 +1172,7 @@ verify: review process() for alloc/lock\n\
 
     #[test]
     fn agal_md_equipped_lists_groups() {
-        let dir = std::env::temp_dir().join(format!(
-            "agal_skills_test_{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("agal_skills_test_{}", std::process::id()));
         let core = dir.join("00-core");
         std::fs::create_dir_all(&core).unwrap();
         std::fs::write(

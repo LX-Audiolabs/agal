@@ -312,7 +312,10 @@ fn resolve_path_selector(raw: &str) -> Result<SkillFile, String> {
     let raw = raw.trim().trim_start_matches("./");
     let lower = raw.to_ascii_lowercase();
     let (left, right) = lower.split_once('/').ok_or_else(|| {
-        format!("invalid skill path '{}'; expected group/skill e.g. ui/slint", raw)
+        format!(
+            "invalid skill path '{}'; expected group/skill e.g. ui/slint",
+            raw
+        )
     })?;
     if right.contains('/') {
         return Err(format!(
@@ -483,7 +486,11 @@ pub fn catalog() -> Vec<SkillFile> {
 
 /// Skills for the given groups (deduped by path).
 pub fn select_owned(groups: &[SkillGroup]) -> Vec<SkillFile> {
-    select_groups(groups, groups.iter().map(|g| g.as_str().to_string()).collect()).files
+    select_groups(
+        groups,
+        groups.iter().map(|g| g.as_str().to_string()).collect(),
+    )
+    .files
 }
 
 /// Print catalog to stdout.
@@ -598,11 +605,16 @@ mod tests {
         // framework-patterns, aura, aura-migration
         assert_eq!(s.files.len(), 3);
         assert!(s.files.iter().all(|f| f.group == SkillGroup::Frameworks));
-        assert!(s.files.iter().any(|f| f.rel_path == "02-frameworks/aura.md"));
-        assert!(s
-            .files
-            .iter()
-            .any(|f| f.rel_path == "02-frameworks/aura-migration.md"));
+        assert!(
+            s.files
+                .iter()
+                .any(|f| f.rel_path == "02-frameworks/aura.md")
+        );
+        assert!(
+            s.files
+                .iter()
+                .any(|f| f.rel_path == "02-frameworks/aura-migration.md")
+        );
     }
 
     #[test]
@@ -666,9 +678,11 @@ mod tests {
     fn preset_clap_ship() {
         let s = parse_selection("clap-ship").unwrap();
         assert!(s.files.iter().any(|f| f.rel_path == "03-formats/clap.md"));
-        assert!(s.files.iter().all(|f| {
-            f.group == SkillGroup::Core || f.rel_path == "03-formats/clap.md"
-        }));
+        assert!(
+            s.files
+                .iter()
+                .all(|f| { f.group == SkillGroup::Core || f.rel_path == "03-formats/clap.md" })
+        );
         assert_eq!(s.files.len(), 5);
     }
 

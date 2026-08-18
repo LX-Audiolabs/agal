@@ -2,12 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
     Fields, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemMacro, ItemStruct, ItemTrait, ItemUse,
     Visibility,
 };
-use syn::spanned::Spanned;
 
 /// One parameter field on a Params struct.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -442,12 +442,7 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
         let fn_name = node.sig.ident.to_string();
         let is_pub = matches!(node.vis, Visibility::Public(_));
         if is_pub {
-            self.record_api(
-                "fn",
-                &fn_name,
-                signature_for_fn(&node.sig),
-                item_line(node),
-            );
+            self.record_api("fn", &fn_name, signature_for_fn(&node.sig), item_line(node));
         }
         match fn_name.as_str() {
             "process" => {
@@ -616,9 +611,7 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
             // Any imported crate whose name ends with -editor is treated as an
             // editor adapter (e.g. lx-slint-editor, aura-editor).
             if crate_name.ends_with("-editor") {
-                self.summary
-                    .imported_editor_adapters
-                    .insert(crate_name);
+                self.summary.imported_editor_adapters.insert(crate_name);
             }
         }
 

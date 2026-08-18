@@ -13,9 +13,7 @@ fn fixture_root() -> PathBuf {
 }
 
 fn lock_fixture() -> std::sync::MutexGuard<'static, ()> {
-    FIXTURE_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
+    FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[test]
@@ -254,7 +252,8 @@ fn notes_include_graph_atoms() {
         "missing kind atom:\n{demo}"
     );
     assert!(
-        demo.contains("depends_on=shared") || demo.contains("[ATOM] type=fact | detail=depends_on="),
+        demo.contains("depends_on=shared")
+            || demo.contains("[ATOM] type=fact | detail=depends_on="),
         "expected workspace dep atom:\n{demo}"
     );
     // info tool hints must not appear inside the graph-atoms fence (error/warn only)
@@ -311,4 +310,58 @@ fn shared_note_includes_api_surface() {
     }
 
     let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
+fn impact_report_lists_inbound_edges() {
+    let _guard = lock_fixture();
+    let root = fixture_root();
+    let report = agal_core::impact_report(&root, "shared").expect("impact report");
+    assert!(
+        report.contains("# agal impact: shared"),
+        "missing header:\n{report}"
+    );
+    assert!(
+        report.contains("demo") || report.contains("legacy_ed"),
+        "expected inbound plugin references:\n{report}"
+    );
+    assert!(
+        report.contains("direct cargo dependencies"),
+        "expected direct deps section:\n{report}"
+    );
+}
+
+#[test]
+fn context_pack_focuses_node() {
+    let _guard = lock_fixture();
+    let root = fixture_root();
+    let opts = agal_core::ContextPackOptions {
+        focus: "demo".into(),
+        budget_tokens: 4000,
+        format: agal_core::ContextPackFormat::Markdown,
+    };
+    let pack = agal_core::context_pack(&root, &opts).expect("context pack");
+    assert!(
+        pack.contains("# agal context pack: demo"),
+        "missing header:\n{pack}"
+    );
+    assert!(
+        pack.contains("shared"),
+        "expected neighbor crate in pack:\n{pack}"
+    );
+}
+
+#[test]
+fn context_pack_json_format() {
+    let _guard = lock_fixture();
+    let root = fixture_root();
+    let opts = agal_core::ContextPackOptions {
+        focus: "shared".into(),
+        budget_tokens: 2000,
+        format: agal_core::ContextPackFormat::Json,
+    };
+    let pack = agal_core::context_pack(&root, &opts).expect("context pack json");
+    let value: serde_json::Value = serde_json::from_str(&pack).expect("valid json");
+    assert_eq!(value["focus"]["name"], "shared");
+    assert!(value["neighbors"].is_array());
 }

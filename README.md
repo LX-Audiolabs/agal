@@ -70,6 +70,10 @@ agal --install-hook .         # post-commit regenerate
 agal -o other-dir .           # custom output dir
 agal --agent-only .           # skip HTML
 
+agal impact aether            # reverse dependencies — who uses this plugin/crate
+agal context --focus aether --budget 4000           # focused Markdown context pack
+agal context --focus aether --budget 4000 --format json  # same as JSON
+
 agal skills list
 agal skills sync              # default: core (DSP constitution)
 agal skills sync --preset slint-ui   # loadout: core + ui/slint
@@ -281,7 +285,7 @@ Open `agal/agal.html`:
 Read **`agal/AGAL.md`** first for map, health, and skills.
 If blocked, fix error findings (`path` + `fix`) before feature work.
 Then agent map → delta → notes/<focus> → skills on demand (packs under skills/).
-Escalate: `agal --plugin NAME .` or `agal.json`.
+Escalate: `agal --plugin NAME .`, `agal impact NAME`, `agal context --focus NAME`, or `agal.json`.
 Config: `agal.toml` (`[[suppress]]` for intentional noise).
 Regenerate: `agal .`  |  doctor: `agal doctor`  |  core skills: `agal skills sync`
 ```

@@ -52,5 +52,10 @@ pub struct RegistryFormat {
 }
 
 pub fn load() -> Option<Registry> {
-    FRAMEWORKS_TOML.parse::<toml::Table>().map(toml::Value::Table).ok()?.try_into().ok()
+    FRAMEWORKS_TOML
+        .parse::<toml::Table>()
+        .map(toml::Value::Table)
+        .ok()?
+        .try_into()
+        .ok()
 }

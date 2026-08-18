@@ -349,8 +349,8 @@ pub fn default_taxonomy() -> BTreeMap<String, FrameworkSpec> {
 
 pub fn resolve_framework_id(name: &str) -> Option<String> {
     match name {
-        "aura" | "aura-core" | "aura-params" | "aura-dsp" | "aura-midi"
-        | "aura-build" | "aura-test" | "aura-shm" | "aura-derive" => Some("aura".to_string()),
+        "aura" | "aura-core" | "aura-params" | "aura-dsp" | "aura-midi" | "aura-build"
+        | "aura-test" | "aura-shm" | "aura-derive" => Some("aura".to_string()),
         "aura-clap" => Some("clap".to_string()),
         "aura-lv2" => Some("lv2".to_string()),
         "aura-vst3" => Some("vst3".to_string()),
@@ -529,7 +529,10 @@ mod tests {
         let tax = default_taxonomy();
         let deps: BTreeSet<String> = ["clap-sys"].into_iter().map(String::from).collect();
         let ids = detect_framework_ids(&tax, &deps, &BTreeSet::new());
-        assert!(ids.contains("clap"), "clap-sys should map to clap, got {ids:?}");
+        assert!(
+            ids.contains("clap"),
+            "clap-sys should map to clap, got {ids:?}"
+        );
     }
 
     #[test]

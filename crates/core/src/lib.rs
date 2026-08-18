@@ -6,6 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -879,10 +880,8 @@ fn build_audiolabs(
     let mut raw_findings = findings::analyze(project_root, &nodes, &edges, &project_config.rules);
     tool_hints::append_hints(project_root, &nodes, &mut raw_findings);
 
-    let (findings, findings_suppressed) = findings::apply_suppressions(
-        raw_findings,
-        &project_config.suppress,
-    );
+    let (findings, findings_suppressed) =
+        findings::apply_suppressions(raw_findings, &project_config.suppress);
 
     // Stable edge order
     edges.sort_by(|a, b| {
@@ -923,7 +922,9 @@ fn rank_and_cap_api_surfaces(graph: &mut Audiolabs, cfg: &config::MapConfig) {
     // First pass: per-crate cap + total count.
     let mut max_per_crate = cfg.max_symbols_per_crate;
     for n in &mut graph.nodes {
-        let Some(ast) = n.ast_summary.as_mut() else { continue };
+        let Some(ast) = n.ast_summary.as_mut() else {
+            continue;
+        };
         if n.kind == "plugin" {
             ast.public_api.clear();
             ast.api_surface.clear();
@@ -932,8 +933,7 @@ fn rank_and_cap_api_surfaces(graph: &mut Audiolabs, cfg: &config::MapConfig) {
         }
         // Keep the legacy name set capped for JSON size.
         if ast.public_api.len() > 80 {
-            let truncated: BTreeSet<String> =
-                ast.public_api.iter().take(80).cloned().collect();
+            let truncated: BTreeSet<String> = ast.public_api.iter().take(80).cloned().collect();
             ast.public_api = truncated;
         }
         sort_api_surface(ast);
@@ -951,14 +951,21 @@ fn rank_and_cap_api_surfaces(graph: &mut Audiolabs, cfg: &config::MapConfig) {
             .nodes
             .iter()
             .filter_map(|n| n.ast_summary.as_ref())
-            .map(|a| a.api_surface.iter().map(|s| s.signature.len()).sum::<usize>())
+            .map(|a| {
+                a.api_surface
+                    .iter()
+                    .map(|s| s.signature.len())
+                    .sum::<usize>()
+            })
             .sum();
         if total_chars <= budget_chars || max_per_crate <= 3 {
             break;
         }
         max_per_crate -= 1;
         for n in &mut graph.nodes {
-            let Some(ast) = n.ast_summary.as_mut() else { continue };
+            let Some(ast) = n.ast_summary.as_mut() else {
+                continue;
+            };
             if ast.api_surface_total > max_per_crate {
                 ast.api_surface.truncate(max_per_crate);
             }
@@ -1366,6 +1373,297 @@ pub fn doctor(project_root: &Path) -> Result<String, String> {
         &graph.nodes,
         &status,
     ))
+}
+
+/// Find a node by name, id, or suffix (e.g. `aether` matches `plugins/aether`).
+fn resolve_node<'g>(graph: &'g Audiolabs, name: &str) -> Option<&'g Node> {
+    graph
+        .nodes
+        .iter()
+        .find(|n| n.name == name || n.id == name || n.id.ends_with(&format!("/{}", name)))
+}
+
+/// Reverse-dependency report: who depends on / uses the given node.
+pub fn impact_report(project_root: &Path, name: &str) -> Result<String, String> {
+    let graph = scan(project_root, false)?;
+    let node = resolve_node(&graph, name)
+        .ok_or_else(|| format!("node '{}' not found in workspace", name))?;
+    let id = &node.id;
+
+    let inbound: Vec<&Edge> = graph.edges.iter().filter(|e| e.to == *id).collect();
+    let direct: Vec<&Edge> = inbound
+        .iter()
+        .copied()
+        .filter(|e| e.kind == "depends_on")
+        .collect();
+    let semantic: Vec<&Edge> = inbound
+        .iter()
+        .copied()
+        .filter(|e| e.kind != "depends_on")
+        .collect();
+
+    let mut s = String::new();
+    let _ = writeln!(s, "# agal impact: {}", node.name);
+    let _ = writeln!(s, "**id:** `{}`  ", id);
+    let _ = writeln!(s, "**kind:** `{}`  ", node.kind);
+    let _ = writeln!(s, "**path:** `{}`  ", node.path);
+    let _ = writeln!(s, "**total inbound edges:** {}\n", inbound.len());
+
+    if !direct.is_empty() {
+        let _ = writeln!(s, "## direct cargo dependencies");
+        for e in direct {
+            let note = e
+                .note
+                .as_deref()
+                .map(|n| format!(" — {}", n))
+                .unwrap_or_default();
+            let _ = writeln!(
+                s,
+                "- `{}` → `{}`{}",
+                short_id(&e.from),
+                short_id(&e.to),
+                note
+            );
+        }
+        let _ = writeln!(s);
+    }
+
+    if !semantic.is_empty() {
+        let _ = writeln!(s, "## semantic edges");
+        for e in semantic {
+            let note = e
+                .note
+                .as_deref()
+                .map(|n| format!(" — {}", n))
+                .unwrap_or_default();
+            let _ = writeln!(
+                s,
+                "- `{}` --[{}]→ `{}`{}",
+                short_id(&e.from),
+                e.kind,
+                short_id(&e.to),
+                note
+            );
+        }
+        let _ = writeln!(s);
+    }
+
+    if inbound.is_empty() {
+        let _ = writeln!(
+            s,
+            "_no inbound edges — this node is not referenced by any workspace member_"
+        );
+    }
+
+    let related_findings: Vec<&findings::Finding> = graph
+        .findings
+        .iter()
+        .filter(|f| f.node.as_deref() == Some(id.as_str()))
+        .collect();
+    if !related_findings.is_empty() {
+        let _ = writeln!(s, "## findings");
+        for f in related_findings {
+            let _ = writeln!(s, "- **[{}]** `{}`: {}", f.severity, f.code, f.message);
+        }
+    }
+
+    Ok(s)
+}
+
+/// Options for `context_pack`.
+#[derive(Debug, Clone, Default)]
+pub struct ContextPackOptions {
+    pub focus: String,
+    pub budget_tokens: usize,
+    pub format: ContextPackFormat,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ContextPackFormat {
+    #[default]
+    Markdown,
+    Json,
+}
+
+impl ContextPackFormat {
+    pub fn parse(s: &str) -> Result<Self, String> {
+        match s.to_ascii_lowercase().as_str() {
+            "md" | "markdown" => Ok(Self::Markdown),
+            "json" => Ok(Self::Json),
+            other => Err(format!("unknown context format '{}'; use md|json", other)),
+        }
+    }
+}
+
+/// Build a focused, token-budgeted context pack for one node.
+pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<String, String> {
+    let graph = scan(project_root, false)?;
+    let node = resolve_node(&graph, &opts.focus)
+        .ok_or_else(|| format!("node '{}' not found in workspace", opts.focus))?;
+    let id = &node.id;
+
+    let related_edges: Vec<&Edge> = graph
+        .edges
+        .iter()
+        .filter(|e| e.from == *id || e.to == *id)
+        .collect();
+    let neighbor_ids: BTreeSet<&str> = related_edges
+        .iter()
+        .flat_map(|e| [e.from.as_str(), e.to.as_str()])
+        .filter(|n| *n != id.as_str())
+        .collect();
+    let neighbors: Vec<&Node> = graph
+        .nodes
+        .iter()
+        .filter(|n| neighbor_ids.contains(n.id.as_str()))
+        .collect();
+    let findings: Vec<&findings::Finding> = graph
+        .findings
+        .iter()
+        .filter(|f| f.node.as_deref() == Some(id.as_str()))
+        .collect();
+
+    match opts.format {
+        ContextPackFormat::Json => {
+            let value = serde_json::json!({
+                "focus": node,
+                "neighbors": neighbors,
+                "edges": related_edges,
+                "findings": findings,
+                "budget_tokens": opts.budget_tokens,
+            });
+            serde_json::to_string_pretty(&value)
+                .map_err(|e| format!("json serialization failed: {}", e))
+        }
+        ContextPackFormat::Markdown => Ok(render_context_markdown(
+            &graph,
+            node,
+            &neighbors,
+            &related_edges,
+            &findings,
+            opts.budget_tokens,
+        )),
+    }
+}
+
+fn render_context_markdown(
+    graph: &Audiolabs,
+    node: &Node,
+    neighbors: &[&Node],
+    edges: &[&Edge],
+    findings: &[&findings::Finding],
+    budget_tokens: usize,
+) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::new();
+    let _ = writeln!(s, "# agal context pack: {}", node.name);
+    let _ = writeln!(s, "**budget:** ~{} tokens  ", budget_tokens);
+    let _ = writeln!(s, "**focus:** `{}` (`{}`)  ", node.id, node.kind);
+    if !node.frameworks.is_empty() {
+        let _ = writeln!(s, "**frameworks:** {}  ", node.frameworks.join(", "));
+    }
+    if let Some(m) = &node.migration_status {
+        let _ = writeln!(s, "**migration:** {}  ", m);
+    }
+    let _ = writeln!(s);
+
+    // API surface (already capped by scan).
+    if let Some(ast) = &node.ast_summary {
+        if !ast.api_surface.is_empty() {
+            let _ = writeln!(s, "## public API surface (top symbols)");
+            for sym in &ast.api_surface {
+                let _ = writeln!(s, "- `{}:{}` — `{}`", sym.file, sym.line, sym.signature);
+            }
+            if ast.api_surface_total > ast.api_surface.len() {
+                let _ = writeln!(
+                    s,
+                    "- _… and {} more symbols_",
+                    ast.api_surface_total - ast.api_surface.len()
+                );
+            }
+            let _ = writeln!(s);
+        }
+    }
+
+    if !edges.is_empty() {
+        let _ = writeln!(s, "## edges (1-hop)");
+        for kind in [
+            "depends_on",
+            "uses_ui",
+            "ipc_peer",
+            "runtime_depends_on",
+            "build_depends_on",
+            "dev_depends_on",
+        ] {
+            let group: Vec<&&Edge> = edges.iter().filter(|e| e.kind == kind).collect();
+            if group.is_empty() {
+                continue;
+            }
+            let _ = writeln!(s, "### {}", kind);
+            for e in group {
+                let note = e
+                    .note
+                    .as_deref()
+                    .map(|n| format!(" — {}", n))
+                    .unwrap_or_default();
+                let _ = writeln!(
+                    s,
+                    "- `{}` → `{}`{}",
+                    short_id(&e.from),
+                    short_id(&e.to),
+                    note
+                );
+            }
+        }
+        let _ = writeln!(s);
+    }
+
+    if !neighbors.is_empty() {
+        let _ = writeln!(s, "## neighbors");
+        for n in neighbors {
+            let _ = writeln!(
+                s,
+                "- `{}` (`{}`) — frameworks: {}",
+                n.name,
+                n.kind,
+                n.frameworks.join(", ")
+            );
+        }
+        let _ = writeln!(s);
+    }
+
+    if !findings.is_empty() {
+        let _ = writeln!(s, "## findings");
+        for f in findings {
+            let fix = f
+                .fix
+                .as_deref()
+                .map(|x| format!(" — fix: {}", x))
+                .unwrap_or_default();
+            let _ = writeln!(
+                s,
+                "- **[{}]** `{}`: {}{}",
+                f.severity, f.code, f.message, fix
+            );
+        }
+        let _ = writeln!(s);
+    }
+
+    let _ = writeln!(s, "## workspace summary");
+    let _ = writeln!(
+        s,
+        "- nodes: {} · edges: {} · findings: {}",
+        graph.nodes.len(),
+        graph.edges.len(),
+        graph.findings.len()
+    );
+    let _ = writeln!(s, "- generated: `{}`", graph.generated_at);
+
+    s
+}
+
+fn short_id(id: &str) -> &str {
+    id.rsplit('/').next().unwrap_or(id)
 }
 
 /// Public entry point used by the `agal` CLI.

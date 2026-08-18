@@ -46,6 +46,27 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// Reverse-dependency impact report for a crate/plugin
+    Impact {
+        /// Crate or plugin name (matches name, id, or suffix)
+        name: String,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Build a focused, token-budgeted context pack for one node
+    Context {
+        /// Crate or plugin name to focus on
+        #[arg(short, long)]
+        focus: String,
+        /// Approximate token budget (default: 8000)
+        #[arg(short, long, default_value = "8000")]
+        budget: usize,
+        /// Output format: md or json (default: md)
+        #[arg(long, default_value = "md")]
+        format: String,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -69,6 +90,25 @@ enum SkillsCmd {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+}
+
+fn canonicalize_root(project_root: &std::path::Path) -> PathBuf {
+    let root = match project_root.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!(
+                "error: cannot canonicalize {}: {}",
+                project_root.display(),
+                e
+            );
+            std::process::exit(1);
+        }
+    };
+    if !root.join("Cargo.toml").exists() {
+        eprintln!("error: no Cargo.toml in {}", root.display());
+        std::process::exit(1);
+    }
+    root
 }
 
 fn main() {
@@ -140,22 +180,51 @@ fn main() {
                 }
             },
             Commands::Doctor { project_root } => {
-                let root = match project_root.canonicalize() {
-                    Ok(p) => p,
+                let root = canonicalize_root(&project_root);
+                match agal_core::doctor(&root) {
+                    Ok(report) => {
+                        print!("{report}");
+                        return;
+                    }
                     Err(e) => {
-                        eprintln!(
-                            "error: cannot canonicalize {}: {}",
-                            project_root.display(),
-                            e
-                        );
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::Impact { name, project_root } => {
+                let root = canonicalize_root(&project_root);
+                match agal_core::impact_report(&root, &name) {
+                    Ok(report) => {
+                        print!("{report}");
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::Context {
+                focus,
+                budget,
+                format,
+                project_root,
+            } => {
+                let root = canonicalize_root(&project_root);
+                let fmt = match agal_core::ContextPackFormat::parse(&format) {
+                    Ok(f) => f,
+                    Err(e) => {
+                        eprintln!("error: {e}");
                         std::process::exit(1);
                     }
                 };
-                if !root.join("Cargo.toml").exists() {
-                    eprintln!("error: no Cargo.toml in {}", root.display());
-                    std::process::exit(1);
-                }
-                match agal_core::doctor(&root) {
+                let opts = agal_core::ContextPackOptions {
+                    focus,
+                    budget_tokens: budget,
+                    format: fmt,
+                };
+                match agal_core::context_pack(&root, &opts) {
                     Ok(report) => {
                         print!("{report}");
                         return;

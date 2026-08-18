@@ -13,11 +13,7 @@ use crate::Node;
 use crate::findings::{Finding, Severity};
 
 /// Binaries we recognize as optional code-intelligence tools (not required).
-const OPTIONAL_SYMBOL_TOOLS: &[&str] = &[
-    "codegraph",
-    "codebase-memory-mcp",
-    "graphify",
-];
+const OPTIONAL_SYMBOL_TOOLS: &[&str] = &["codegraph", "codebase-memory-mcp", "graphify"];
 
 /// Result of probing common audio/Rust quality tools.
 #[derive(Debug, Clone)]
@@ -84,7 +80,9 @@ pub fn append_hints(project_root: &Path, nodes: &[Node], out: &mut Vec<Finding>)
 
     // AURA workspace: hint cargo aura if aura.toml or aura-* crates present
     let is_aura_ws = crate::config::is_aura_workspace(project_root);
-    let has_aura_nodes = nodes.iter().any(|n| n.frameworks.iter().any(|f| f == "aura"));
+    let has_aura_nodes = nodes
+        .iter()
+        .any(|n| n.frameworks.iter().any(|f| f == "aura"));
     if is_aura_ws || has_aura_nodes {
         let aura_msg = if has_aura_nodes {
             "AURA framework detected — use `cargo aura` for build, install, doctor"
@@ -123,7 +121,9 @@ pub fn append_hints(project_root: &Path, nodes: &[Node], out: &mut Vec<Finding>)
                 })
             })
             .unwrap_or(false)
-            || n.frameworks.iter().any(|f| f == "clap" || f == "truce" || f == "aura");
+            || n.frameworks
+                .iter()
+                .any(|f| f == "clap" || f == "truce" || f == "aura");
 
         if !has_clap {
             continue;
@@ -343,7 +343,10 @@ mod tests {
     fn append_hints_does_not_emit_symbol_tool_findings() {
         let mut out = Vec::new();
         append_hints(Path::new("."), &[], &mut out);
-        assert!(out.iter().all(|f| !f.code.contains("symbol") && !f.code.contains("codegraph")));
+        assert!(
+            out.iter()
+                .all(|f| !f.code.contains("symbol") && !f.code.contains("codegraph"))
+        );
     }
 
     #[test]

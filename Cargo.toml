@@ -1,6 +1,6 @@
 [package]
 name = "agentic-audiolab"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 description = "Orientation layer for AI-assisted Rust audio workspaces: graph, hybrid notes, curated skills"
 license = "GPL-3.0-or-later"

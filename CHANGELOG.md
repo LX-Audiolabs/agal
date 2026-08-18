@@ -6,6 +6,16 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [0.7.1] — 2026-08-18
+
+### Added
+- **`agal impact <name>`** — reverse-dependency report for any crate/plugin/member node; lists direct cargo deps and semantic edges (`uses_ui`, `ipc_peer`, etc.) that point at the focus.
+- **`agal context --focus <name> --budget <n>`** — focused, token-budgeted context pack in Markdown or JSON. Includes focus node summary, public API surface, 1-hop edges/neighbors, and related findings.
+- **Context pack + impact deferred MCP** — file-based disclosure (notes / context packs) stays primary; MCP server mode deferred until it proves necessary (see `TODO-api-map.md`).
+
+### Changed
+- **Cheatsheet + README** updated with `impact` and `context` commands.
+
 ## [0.7.0] — 2026-08-12
 
 ### Fixed
