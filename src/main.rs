@@ -55,9 +55,12 @@ enum Commands {
     },
     /// Build a focused, token-budgeted context pack for one node
     Context {
-        /// Crate or plugin name to focus on
+        /// Crate or plugin name to focus on (optional when --diff is given)
         #[arg(short, long)]
-        focus: String,
+        focus: Option<String>,
+        /// Optional git ref to center the pack on changed files
+        #[arg(short, long)]
+        diff: Option<String>,
         /// Approximate token budget (default: 8000)
         #[arg(short, long, default_value = "8000")]
         budget: usize,
@@ -207,11 +210,16 @@ fn main() {
             }
             Commands::Context {
                 focus,
+                diff,
                 budget,
                 format,
                 project_root,
             } => {
                 let root = canonicalize_root(&project_root);
+                if focus.is_none() && diff.is_none() {
+                    eprintln!("error: context requires --focus or --diff");
+                    std::process::exit(1);
+                }
                 let fmt = match agal_core::ContextPackFormat::parse(&format) {
                     Ok(f) => f,
                     Err(e) => {
@@ -221,6 +229,7 @@ fn main() {
                 };
                 let opts = agal_core::ContextPackOptions {
                     focus,
+                    diff,
                     budget_tokens: budget,
                     format: fmt,
                 };

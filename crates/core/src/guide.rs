@@ -134,6 +134,7 @@ Without `--force`, existing skill files are **skipped** (local edits kept).
 | `agal impact <name>` | reverse dependencies — who uses this crate/plugin |
 | `agal context --focus <name> --budget 4000` | token-capped Markdown pack (focus + 1-hop + findings) |
 | `agal context --focus <name> --budget 4000 --format json` | same pack as JSON |
+| `agal context --diff HEAD~1 --budget 4000` | pack centered on files changed since ref |
 
 Use these when you need a quick blast-radius or a focused context bundle without opening the full graph.
 

@@ -336,7 +336,8 @@ fn context_pack_focuses_node() {
     let _guard = lock_fixture();
     let root = fixture_root();
     let opts = agal_core::ContextPackOptions {
-        focus: "demo".into(),
+        focus: Some("demo".into()),
+        diff: None,
         budget_tokens: 4000,
         format: agal_core::ContextPackFormat::Markdown,
     };
@@ -356,7 +357,8 @@ fn context_pack_json_format() {
     let _guard = lock_fixture();
     let root = fixture_root();
     let opts = agal_core::ContextPackOptions {
-        focus: "shared".into(),
+        focus: Some("shared".into()),
+        diff: None,
         budget_tokens: 2000,
         format: agal_core::ContextPackFormat::Json,
     };

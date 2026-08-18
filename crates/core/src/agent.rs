@@ -450,7 +450,8 @@ pub fn render_agal_md(
          agal --plugin aether .              # + one-hop slice
          agal impact aether                  # reverse dependencies on a plugin/crate
          agal context --focus aether --budget 4000           # focused Markdown context pack
-         agal context --focus aether --budget 4000 --format json  # same as JSON\n\
+         agal context --focus aether --budget 4000 --format json  # same as JSON
+         agal context --diff HEAD~1 --budget 4000            # pack centered on changed files\n\
          agal skills sync                    # default: core (00-core)\n\
          agal skills sync --preset slint-ui  # core + slint (loadout)\n\
          agal skills sync --only ui/slint    # single pack file\n\

@@ -73,6 +73,7 @@ agal --agent-only .           # skip HTML
 agal impact aether            # reverse dependencies — who uses this plugin/crate
 agal context --focus aether --budget 4000           # focused Markdown context pack
 agal context --focus aether --budget 4000 --format json  # same as JSON
+agal context --diff HEAD~1 --budget 4000            # pack centered on changed files
 
 agal skills list
 agal skills sync              # default: core (DSP constitution)

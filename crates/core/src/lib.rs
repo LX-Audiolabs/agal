@@ -1473,7 +1473,8 @@ pub fn impact_report(project_root: &Path, name: &str) -> Result<String, String> 
 /// Options for `context_pack`.
 #[derive(Debug, Clone, Default)]
 pub struct ContextPackOptions {
-    pub focus: String,
+    pub focus: Option<String>,
+    pub diff: Option<String>,
     pub budget_tokens: usize,
     pub format: ContextPackFormat,
 }
@@ -1498,8 +1499,29 @@ impl ContextPackFormat {
 /// Build a focused, token-budgeted context pack for one node.
 pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<String, String> {
     let graph = scan(project_root, false)?;
-    let node = resolve_node(&graph, &opts.focus)
-        .ok_or_else(|| format!("node '{}' not found in workspace", opts.focus))?;
+
+    let diff_paths = match &opts.diff {
+        Some(diff_ref) => git_diff_paths(project_root, diff_ref)?,
+        None => Vec::new(),
+    };
+    let changed_nodes: Vec<&Node> = graph
+        .nodes
+        .iter()
+        .filter(|n| {
+            diff_paths
+                .iter()
+                .any(|p| n.path.starts_with(p) || p.starts_with(&n.path))
+        })
+        .collect();
+
+    let focus_name = opts
+        .focus
+        .clone()
+        .or_else(|| changed_nodes.first().map(|n| n.name.clone()))
+        .ok_or_else(|| "context requires --focus or a diff with changed files".to_string())?;
+
+    let node = resolve_node(&graph, &focus_name)
+        .ok_or_else(|| format!("node '{}' not found in workspace", focus_name))?;
     let id = &node.id;
 
     let related_edges: Vec<&Edge> = graph
@@ -1523,10 +1545,15 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
         .filter(|f| f.node.as_deref() == Some(id.as_str()))
         .collect();
 
+    let changed_node_names: Vec<&str> = changed_nodes.iter().map(|n| n.name.as_str()).collect();
+
     match opts.format {
         ContextPackFormat::Json => {
             let value = serde_json::json!({
                 "focus": node,
+                "diff_ref": opts.diff,
+                "diff_paths": diff_paths,
+                "changed_nodes": changed_node_names,
                 "neighbors": neighbors,
                 "edges": related_edges,
                 "findings": findings,
@@ -1535,29 +1562,72 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
             serde_json::to_string_pretty(&value)
                 .map_err(|e| format!("json serialization failed: {}", e))
         }
-        ContextPackFormat::Markdown => Ok(render_context_markdown(
-            &graph,
+        ContextPackFormat::Markdown => Ok(render_context_markdown(ContextPackRenderData {
+            graph: &graph,
             node,
-            &neighbors,
-            &related_edges,
-            &findings,
-            opts.budget_tokens,
-        )),
+            neighbors: &neighbors,
+            edges: &related_edges,
+            findings: &findings,
+            diff_paths: &diff_paths,
+            changed_nodes: &changed_node_names,
+            budget_tokens: opts.budget_tokens,
+            diff_ref: opts.diff.as_deref(),
+        })),
     }
 }
 
-fn render_context_markdown(
-    graph: &Audiolabs,
-    node: &Node,
-    neighbors: &[&Node],
-    edges: &[&Edge],
-    findings: &[&findings::Finding],
+/// Run `git diff --name-only <ref>` and return relative paths.
+fn git_diff_paths(project_root: &Path, diff_ref: &str) -> Result<Vec<String>, String> {
+    let output = std::process::Command::new("git")
+        .arg("diff")
+        .arg("--name-only")
+        .arg(diff_ref)
+        .current_dir(project_root)
+        .output()
+        .map_err(|e| format!("failed to run git diff: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git diff failed: {}", stderr));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .map(|s| s.replace('\\', "/"))
+        .filter(|s| !s.is_empty())
+        .collect())
+}
+
+struct ContextPackRenderData<'g> {
+    graph: &'g Audiolabs,
+    node: &'g Node,
+    neighbors: &'g [&'g Node],
+    edges: &'g [&'g Edge],
+    findings: &'g [&'g findings::Finding],
+    diff_paths: &'g [String],
+    changed_nodes: &'g [&'g str],
     budget_tokens: usize,
-) -> String {
+    diff_ref: Option<&'g str>,
+}
+
+fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
     use std::fmt::Write as _;
+    let ContextPackRenderData {
+        graph,
+        node,
+        neighbors,
+        edges,
+        findings,
+        diff_paths,
+        changed_nodes,
+        budget_tokens,
+        diff_ref,
+    } = data;
     let mut s = String::new();
     let _ = writeln!(s, "# agal context pack: {}", node.name);
     let _ = writeln!(s, "**budget:** ~{} tokens  ", budget_tokens);
+    if let Some(dr) = diff_ref {
+        let _ = writeln!(s, "**diff:** `{}`  ", dr);
+    }
     let _ = writeln!(s, "**focus:** `{}` (`{}`)  ", node.id, node.kind);
     if !node.frameworks.is_empty() {
         let _ = writeln!(s, "**frameworks:** {}  ", node.frameworks.join(", "));
@@ -1566,6 +1636,25 @@ fn render_context_markdown(
         let _ = writeln!(s, "**migration:** {}  ", m);
     }
     let _ = writeln!(s);
+
+    if !diff_paths.is_empty() {
+        let _ = writeln!(s, "## changed files");
+        for p in diff_paths {
+            let _ = writeln!(s, "- `{}`", p);
+        }
+        if !changed_nodes.is_empty() {
+            let _ = writeln!(
+                s,
+                "\nchanged workspace nodes: {}",
+                changed_nodes
+                    .iter()
+                    .map(|n| format!("`{n}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+        let _ = writeln!(s);
+    }
 
     // API surface (already capped by scan).
     if let Some(ast) = &node.ast_summary {
@@ -1677,4 +1766,68 @@ pub fn generate(project_root: &Path, options: &GenerateOptions) -> Result<(), St
     }
 
     generate_one_shot(project_root, options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    fn run_git(repo: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .output()
+            .expect("git should be on PATH");
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn init_git(repo: &Path) {
+        run_git(repo, &["init"]);
+        run_git(repo, &["config", "user.name", "agal test"]);
+        run_git(repo, &["config", "user.email", "test@example.com"]);
+    }
+
+    #[test]
+    fn git_diff_paths_detects_changed_files() {
+        let tmp = std::env::temp_dir().join(format!("agal_diff_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        init_git(&tmp);
+
+        std::fs::create_dir_all(tmp.join("src")).unwrap();
+        std::fs::write(tmp.join("src/lib.rs"), "pub fn old() {}").unwrap();
+        std::fs::write(tmp.join("Cargo.toml"), "[package]").unwrap();
+        run_git(&tmp, &["add", "."]);
+        run_git(&tmp, &["commit", "-m", "initial"]);
+
+        std::fs::write(tmp.join("src/lib.rs"), "pub fn new() {}").unwrap();
+        let paths = git_diff_paths(&tmp, "HEAD").expect("diff paths");
+        assert_eq!(paths, vec!["src/lib.rs"]);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn git_diff_paths_empty_when_clean() {
+        let tmp = std::env::temp_dir().join(format!("agal_diff_clean_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        init_git(&tmp);
+
+        std::fs::create_dir_all(tmp.join("src")).unwrap();
+        std::fs::write(tmp.join("src/lib.rs"), "pub fn x() {}").unwrap();
+        run_git(&tmp, &["add", "."]);
+        run_git(&tmp, &["commit", "-m", "initial"]);
+
+        let paths = git_diff_paths(&tmp, "HEAD").expect("diff paths");
+        assert!(paths.is_empty());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
