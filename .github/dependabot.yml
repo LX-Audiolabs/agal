@@ -1,5 +1,5 @@
 # Dependabot — agal (Agentic Audiolab).
-# Weekly cargo PRs for crates.io deps, monthly CI action bumps.
+# Weekly cargo PRs for crates.io deps.
 # Review + `cargo build --workspace && cargo test --workspace` before merge.
 
 version: 2
