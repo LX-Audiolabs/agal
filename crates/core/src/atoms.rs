@@ -66,8 +66,14 @@ struct Atom {
 
 fn atom_type(line: &str) -> Option<String> {
     let rest = line.trim().strip_prefix("[ATOM]")?.trim();
-    let type_part = rest.split('|').next()?.trim();
-    let val = type_part.strip_prefix("type=")?.trim();
+    // Template placeholder: "type=decision|lesson|constraint" — multiple types before first space/pipe-space
+    // Detect by checking raw rest for "type=…|…" pattern before splitting on field separator " | "
+    let type_raw = rest.split(" | ").next().unwrap_or("").trim();
+    let type_val_raw = type_raw.strip_prefix("type=").unwrap_or("").trim();
+    if type_val_raw.contains('|') {
+        return None;
+    }
+    let val = type_val_raw;
     Some(val.to_string())
 }
 
