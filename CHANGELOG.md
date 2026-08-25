@@ -6,6 +6,11 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [Unreleased]
+
+### Added
+- **Knowledge panel in HTML** — floating card (bottom-center) showing all non-`fact` `[ATOM]` entries from notes, grouped by type (failure, lesson, decision, constraint) with color-coded badges. Collapses by default; hidden on mobile.
+
 ## [0.8.0] — 2026-08-25
 
 ### Added
