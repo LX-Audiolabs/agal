@@ -2,7 +2,7 @@
 id: dsp-delay-lines
 group: core
 summary: DelayLine, CombFilter, AllpassDelay aus aura-dsp — fraktionale Delays, Interpolation.
-triggers: delay, delay line, ring buffer, fractional delay, interpolation, comb filter, allpass, reverb, chorus
+triggers: delay, delay line, ring buffer, fractional delay, interpolation, comb filter, allpass, reverb, chorus, dsp
 verify: max_delay in prepare() allokiert; flush_denormal in Feedback-Pfaden; delay_samples <= max-1
 source: global
 copied_by: template

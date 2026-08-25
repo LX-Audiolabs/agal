@@ -2,7 +2,7 @@
 id: dsp-util
 group: core
 summary: dsp_util aus aura-dsp — dB, Interpolation, LUT, PRNG, Polynomial-Approximation.
-triggers: db, amplitude, lerp, hermite, interpolation, LUT, lookup table, PRNG, noise, polynomial, tanh, powf
+triggers: db, amplitude, lerp, hermite, interpolation, LUT, lookup table, PRNG, noise, polynomial, tanh, powf, dsp
 verify: db_to_amplitude_lut statt powf in Hot Path; xorshift32 statt rand in Audio-Thread
 source: global
 copied_by: template

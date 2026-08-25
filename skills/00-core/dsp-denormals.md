@@ -2,7 +2,7 @@
 id: dsp-denormals
 group: core
 summary: Subnormal float schutz — flush_denormal(), FTZ/DAZ, Feedback-Pfade in AURA.
-triggers: denormal, subnormal, performance, slowdown, flush, FTZ, DAZ, feedback, IIR
+triggers: denormal, subnormal, performance, slowdown, flush, FTZ, DAZ, feedback, IIR, dsp
 verify: flush_denormal() an jeder State-Variable in Feedback-Pfaden; CombFilter/BiquadFilter schon intern gesichert
 source: global
 copied_by: template

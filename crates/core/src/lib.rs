@@ -1500,6 +1500,9 @@ impl ContextPackFormat {
 
 /// Build a focused, token-budgeted context pack for one node.
 pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<String, String> {
+    let output_dir = config::ProjectConfig::load(project_root)
+        .output_dir
+        .unwrap_or_else(|| DEFAULT_OUTPUT_DIR.to_string());
     let graph = scan(project_root, false)?;
 
     let diff_paths = match &opts.diff {
@@ -1549,8 +1552,31 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
 
     let changed_node_names: Vec<&str> = changed_nodes.iter().map(|n| n.name.as_str()).collect();
 
+    // Build query terms for skill matching: node name parts + frameworks.
+    // Exclude node.kind ("crate", "plugin") — too generic, causes false-positive matches.
+    let mut skill_terms: Vec<String> = node
+        .name
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    for fw in &node.frameworks {
+        skill_terms.push(fw.clone());
+    }
+    let skill_term_refs: Vec<&str> = skill_terms.iter().map(String::as_str).collect();
+    let matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
+
     match opts.format {
         ContextPackFormat::Json => {
+            let skill_refs: Vec<serde_json::Value> = matched_skills
+                .iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "path": s.rel_path,
+                        "matched_triggers": s.matched_triggers,
+                    })
+                })
+                .collect();
             let value = serde_json::json!({
                 "focus": node,
                 "diff_ref": opts.diff,
@@ -1559,6 +1585,7 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
                 "neighbors": neighbors,
                 "edges": related_edges,
                 "findings": findings,
+                "matched_skills": skill_refs,
                 "budget_tokens": opts.budget_tokens,
             });
             serde_json::to_string_pretty(&value)
@@ -1570,6 +1597,7 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
             neighbors: &neighbors,
             edges: &related_edges,
             findings: &findings,
+            matched_skills: &matched_skills,
             diff_paths: &diff_paths,
             changed_nodes: &changed_node_names,
             budget_tokens: opts.budget_tokens,
@@ -1605,6 +1633,7 @@ struct ContextPackRenderData<'g> {
     neighbors: &'g [&'g Node],
     edges: &'g [&'g Edge],
     findings: &'g [&'g findings::Finding],
+    matched_skills: &'g [atoms::SkillMatch],
     diff_paths: &'g [String],
     changed_nodes: &'g [&'g str],
     budget_tokens: usize,
@@ -1619,6 +1648,7 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
         neighbors,
         edges,
         findings,
+        matched_skills,
         diff_paths,
         changed_nodes,
         budget_tokens,
@@ -1738,6 +1768,19 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
             );
         }
         let _ = writeln!(s);
+    }
+
+    if !matched_skills.is_empty() {
+        let _ = writeln!(s, "## relevant skills ({} matched)\n", matched_skills.len());
+        for sk in matched_skills {
+            let _ = writeln!(
+                s,
+                "### `{}` (triggers: {})\n",
+                sk.rel_path,
+                sk.matched_triggers.join(", ")
+            );
+            let _ = writeln!(s, "{}\n", sk.content.trim());
+        }
     }
 
     let _ = writeln!(s, "## workspace summary");

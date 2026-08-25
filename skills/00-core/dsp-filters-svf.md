@@ -2,7 +2,7 @@
 id: dsp-filters-svf
 group: core
 summary: BiquadFilter vs StateVariableFilter — wann was, Cytomic SVF, simultane Outputs.
-triggers: SVF, state variable filter, biquad, filter, resonance, highpass, lowpass, bandpass, notch, simultaneous
+triggers: SVF, state variable filter, biquad, filter, resonance, highpass, lowpass, bandpass, notch, simultaneous, dsp
 verify: SR-Wechsel → set_params() aufrufen; reset() nach Transport-Stop; q > 0 prüfen
 source: global
 copied_by: template

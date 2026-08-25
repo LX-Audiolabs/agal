@@ -2,7 +2,7 @@
 id: dsp-smoothing
 group: core
 summary: Parameter-Smoothing gegen Zipper-Noise — ParamSmoother aus aura-dsp/aura-params.
-triggers: smoothing, zipper, click, parameter change, knob, automation, ParamSmoother
+triggers: smoothing, zipper, click, parameter change, knob, automation, ParamSmoother, dsp
 verify: kein direktes Schreiben von Param-Wert in Audio-Loop; is_settled() für CPU-Idle
 source: global
 copied_by: template

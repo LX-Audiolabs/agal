@@ -1,4 +1,4 @@
-//! Aggregate [ATOM] entries from notes by type (failure, lesson, decision, …).
+//! ATOM utilities: aggregate [ATOM] entries from notes; match skills by trigger.
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -141,4 +141,113 @@ pub fn aggregate(workspace: &Path, output_dir: &str, types: &[&str]) -> String {
     }
 
     out
+}
+
+/// One matched skill file with its content.
+pub struct SkillMatch {
+    /// Relative path from workspace root.
+    pub rel_path: String,
+    /// Full file content (markdown).
+    pub content: String,
+    /// Matched trigger terms.
+    pub matched_triggers: Vec<String>,
+}
+
+/// Scan `<workspace>/<output_dir>/skills/` and return skills whose `triggers:`
+/// frontmatter field overlaps with any term in `query_terms`.
+///
+/// `query_terms` = focus node name tokens + framework names + extra keywords.
+/// Matching is case-insensitive substring: trigger "biquad" matches term "biquadfilter".
+pub fn match_skills(
+    workspace: &Path,
+    output_dir: &str,
+    query_terms: &[&str],
+) -> Vec<SkillMatch> {
+    let skills_dir = workspace.join(output_dir).join("skills");
+    if !skills_dir.exists() || query_terms.is_empty() {
+        return Vec::new();
+    }
+
+    let lower_terms: Vec<String> = query_terms
+        .iter()
+        .map(|t| t.to_ascii_lowercase())
+        .collect();
+
+    let mut matches: Vec<SkillMatch> = Vec::new();
+
+    for entry in WalkDir::new(&skills_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+        })
+    {
+        let path = entry.path();
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let triggers = parse_triggers(&content);
+        if triggers.is_empty() {
+            continue;
+        }
+
+        // A skill matches if any trigger is a substring of any query term OR vice versa.
+        let matched: Vec<String> = triggers
+            .iter()
+            .filter(|trigger| {
+                let tl = trigger.to_ascii_lowercase();
+                lower_terms
+                    .iter()
+                    .any(|term| term.contains(tl.as_str()) || tl.contains(term.as_str()))
+            })
+            .cloned()
+            .collect();
+
+        if !matched.is_empty() {
+            let rel = path
+                .strip_prefix(workspace)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            matches.push(SkillMatch {
+                rel_path: rel,
+                content,
+                matched_triggers: matched,
+            });
+        }
+    }
+
+    matches
+}
+
+/// Extract comma-separated values from `triggers:` frontmatter field.
+fn parse_triggers(content: &str) -> Vec<String> {
+    // Frontmatter is between first two `---` lines.
+    let mut in_front = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            if !in_front {
+                in_front = true;
+                continue;
+            } else {
+                break;
+            }
+        }
+        if !in_front {
+            continue;
+        }
+        if let Some(val) = trimmed.strip_prefix("triggers:") {
+            return val
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+    }
+    Vec::new()
 }
