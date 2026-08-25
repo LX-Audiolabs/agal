@@ -1566,6 +1566,28 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
     let skill_term_refs: Vec<&str> = skill_terms.iter().map(String::as_str).collect();
     let matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
 
+    // Load ATOMs for context:
+    // - node-specific note: all non-fact atoms
+    // - _workspace.md: only lesson + failure (decisions are high-volume, low-signal for task context)
+    let notes_dir = project_root.join(&output_dir).join("notes");
+    let node_note = notes_dir.join(format!("{}.md", node.name));
+    let workspace_note = notes_dir.join("_workspace.md");
+    let mut node_atoms: Vec<atoms::AtomEntry> = Vec::new();
+    if node_note.exists() {
+        node_atoms.extend(atoms::load_atoms_from_file(&node_note, &node.name, &[]));
+    }
+    // Workspace lessons/failures — cap at 10 most recent (tail of file)
+    let mut ws_atoms = atoms::load_atoms_from_file(
+        &workspace_note,
+        "_workspace",
+        &["lesson", "failure"],
+    );
+    if ws_atoms.len() > 10 {
+        let skip = ws_atoms.len() - 10;
+        ws_atoms.drain(..skip);
+    }
+    node_atoms.extend(ws_atoms);
+
     match opts.format {
         ContextPackFormat::Json => {
             let skill_refs: Vec<serde_json::Value> = matched_skills
@@ -1577,6 +1599,10 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
                     })
                 })
                 .collect();
+            let atom_refs: Vec<serde_json::Value> = node_atoms
+                .iter()
+                .map(|a| serde_json::json!({"type": a.atom_type, "detail": a.detail, "source": a.source}))
+                .collect();
             let value = serde_json::json!({
                 "focus": node,
                 "diff_ref": opts.diff,
@@ -1586,6 +1612,7 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
                 "edges": related_edges,
                 "findings": findings,
                 "matched_skills": skill_refs,
+                "atoms": atom_refs,
                 "budget_tokens": opts.budget_tokens,
             });
             serde_json::to_string_pretty(&value)
@@ -1598,6 +1625,7 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
             edges: &related_edges,
             findings: &findings,
             matched_skills: &matched_skills,
+            node_atoms: &node_atoms,
             diff_paths: &diff_paths,
             changed_nodes: &changed_node_names,
             budget_tokens: opts.budget_tokens,
@@ -1634,6 +1662,7 @@ struct ContextPackRenderData<'g> {
     edges: &'g [&'g Edge],
     findings: &'g [&'g findings::Finding],
     matched_skills: &'g [atoms::SkillMatch],
+    node_atoms: &'g [atoms::AtomEntry],
     diff_paths: &'g [String],
     changed_nodes: &'g [&'g str],
     budget_tokens: usize,
@@ -1649,6 +1678,7 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
         edges,
         findings,
         matched_skills,
+        node_atoms,
         diff_paths,
         changed_nodes,
         budget_tokens,
@@ -1766,6 +1796,14 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
                 "- **[{}]** `{}`: {}{}",
                 f.severity, f.code, f.message, fix
             );
+        }
+        let _ = writeln!(s);
+    }
+
+    if !node_atoms.is_empty() {
+        let _ = writeln!(s, "## knowledge atoms ({} entries)\n", node_atoms.len());
+        for a in node_atoms {
+            let _ = writeln!(s, "- **[{}]** {} _({})_", a.atom_type, a.detail, a.source);
         }
         let _ = writeln!(s);
     }

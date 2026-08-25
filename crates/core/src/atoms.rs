@@ -13,6 +13,35 @@ pub struct AtomEntry {
     pub source: String,
 }
 
+/// Load non-`fact` atoms from a single note file.
+/// `include_types`: if empty, include all non-fact; else only listed types.
+pub fn load_atoms_from_file(path: &Path, source_label: &str, include_types: &[&str]) -> Vec<AtomEntry> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let mut entries = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("[ATOM]") {
+            continue;
+        }
+        let Some(t) = atom_type(trimmed) else { continue };
+        if t == "fact" {
+            continue;
+        }
+        let include = include_types.is_empty() || include_types.iter().any(|want| *want == t);
+        if include {
+            entries.push(AtomEntry {
+                atom_type: t,
+                detail: atom_detail(trimmed),
+                source: source_label.to_string(),
+            });
+        }
+    }
+    entries
+}
+
 /// Load all non-`fact` atoms from `<workspace>/<output_dir>/notes/` as flat entries.
 pub fn load_atoms(workspace: &Path, output_dir: &str) -> Vec<AtomEntry> {
     let notes_dir = workspace.join(output_dir).join("notes");
