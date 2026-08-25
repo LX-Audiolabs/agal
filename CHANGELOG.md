@@ -9,6 +9,8 @@ All notable changes to `agentic-audiolab` / `agal`.
 ## [Unreleased]
 
 ### Added
+- **`rust-workflow` policy skill** — embedded Rust CI discipline: `cargo fmt` + `cargo clippy` when-to-run table, common allow patterns, fix order (fmt → check → clippy → test). Available via `agal skills sync --only policy`.
+- **Policy skills auto-attach in `agal context`** — all `01-policy/` skills from the workspace always appear in context packs, regardless of node-specific trigger matching. Agents always see workflow + code-style policy.
 - **`agal coverage`** — per-node gap map: note presence, atom count, matched skill count for every workspace node. Sorts by kind (plugin→crate→member); flags nodes with no note or no skills.
 - **Knowledge panel in HTML** — floating card (bottom-center) showing all non-`fact` `[ATOM]` entries from notes, grouped by type (failure, lesson, decision, constraint) with color-coded badges. Collapses by default; hidden on mobile.
 - **`agal atom add --note <stem>`** — write atom to a specific crate note (`notes/aura-dsp.md`) instead of `_workspace.md`. Falls back to `_workspace.md` with a warning if the named note doesn't exist yet.
