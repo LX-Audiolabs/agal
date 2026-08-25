@@ -19,6 +19,7 @@ pub mod guide;
 pub mod html;
 pub mod notes;
 pub mod registry;
+pub mod search;
 pub mod skills;
 pub mod tool_hints;
 
@@ -1753,6 +1754,16 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
 
 fn short_id(id: &str) -> &str {
     id.rsplit('/').next().unwrap_or(id)
+}
+
+/// Keyword search over workspace agal notes and synced skills.
+pub fn search_workspace(
+    project_root: &Path,
+    output_dir: &str,
+    query: &str,
+    max_results: usize,
+) -> String {
+    search::search(project_root, output_dir, query, max_results)
 }
 
 /// Public entry point used by the `agal` CLI.

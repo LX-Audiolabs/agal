@@ -21,6 +21,11 @@ pub const DSP_CORRECTNESS: &str = include_str!("../../../skills/00-core/dsp-corr
 pub const AUDIO_THREAD_BOUNDARY: &str =
     include_str!("../../../skills/00-core/audio-thread-boundary.md");
 pub const FILTER_BIQUAD: &str = include_str!("../../../skills/00-core/filter-biquad.md");
+pub const DSP_DENORMALS: &str = include_str!("../../../skills/00-core/dsp-denormals.md");
+pub const DSP_SMOOTHING: &str = include_str!("../../../skills/00-core/dsp-smoothing.md");
+pub const DSP_DELAY_LINES: &str = include_str!("../../../skills/00-core/dsp-delay-lines.md");
+pub const DSP_FILTERS_SVF: &str = include_str!("../../../skills/00-core/dsp-filters-svf.md");
+pub const DSP_UTIL: &str = include_str!("../../../skills/00-core/dsp-util.md");
 pub const FRAMEWORK_PATTERNS: &str =
     include_str!("../../../skills/02-frameworks/framework-patterns.md");
 pub const AURA: &str = include_str!("../../../skills/02-frameworks/aura.md");
@@ -407,6 +412,31 @@ pub fn catalog() -> Vec<SkillFile> {
             content: FILTER_BIQUAD,
         },
         SkillFile {
+            group: SkillGroup::Core,
+            rel_path: "00-core/dsp-denormals.md",
+            content: DSP_DENORMALS,
+        },
+        SkillFile {
+            group: SkillGroup::Core,
+            rel_path: "00-core/dsp-smoothing.md",
+            content: DSP_SMOOTHING,
+        },
+        SkillFile {
+            group: SkillGroup::Core,
+            rel_path: "00-core/dsp-delay-lines.md",
+            content: DSP_DELAY_LINES,
+        },
+        SkillFile {
+            group: SkillGroup::Core,
+            rel_path: "00-core/dsp-filters-svf.md",
+            content: DSP_FILTERS_SVF,
+        },
+        SkillFile {
+            group: SkillGroup::Core,
+            rel_path: "00-core/dsp-util.md",
+            content: DSP_UTIL,
+        },
+        SkillFile {
             group: SkillGroup::Policy,
             rel_path: "01-policy/caveman.md",
             content: CAVEMAN,
@@ -588,7 +618,7 @@ mod tests {
     fn default_empty_is_core() {
         let s = parse_selection("").unwrap();
         assert!(s.files.iter().all(|f| f.group == SkillGroup::Core));
-        assert_eq!(s.files.len(), 4);
+        assert_eq!(s.files.len(), 9);
     }
 
     #[test]
@@ -641,7 +671,7 @@ mod tests {
     #[test]
     fn mix_group_and_single() {
         let s = parse_selection("core,ui/slint").unwrap();
-        assert_eq!(s.files.len(), 5); // 4 core + slint
+        assert_eq!(s.files.len(), 10); // 9 core + slint
         assert!(s.files.iter().any(|f| f.rel_path == "04-ui/slint.md"));
     }
 
@@ -668,7 +698,7 @@ mod tests {
     #[test]
     fn preset_slint_ui() {
         let s = parse_selection("slint-ui").unwrap();
-        assert_eq!(s.files.len(), 5); // 4 core + slint
+        assert_eq!(s.files.len(), 10); // 9 core + slint
         assert!(s.files.iter().any(|f| f.rel_path == "04-ui/slint.md"));
         assert!(s.files.iter().any(|f| f.group == SkillGroup::Core));
         assert!(s.labels.iter().any(|l| l == "preset:slint-ui"));
@@ -683,7 +713,7 @@ mod tests {
                 .iter()
                 .all(|f| { f.group == SkillGroup::Core || f.rel_path == "03-formats/clap.md" })
         );
-        assert_eq!(s.files.len(), 5);
+        assert_eq!(s.files.len(), 10);
     }
 
     #[test]

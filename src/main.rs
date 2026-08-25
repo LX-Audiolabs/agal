@@ -53,6 +53,19 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// Search notes and synced skills for keywords
+    Search {
+        /// Query string (space-separated keywords, all must match per line)
+        query: String,
+        /// Max files to return (default: 10)
+        #[arg(short, long, default_value = "10")]
+        max: usize,
+        /// Output dir under project root (default: agal)
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: std::path::PathBuf,
+    },
     /// Build a focused, token-budgeted context pack for one node
     Context {
         /// Crate or plugin name to focus on (optional when --diff is given)
@@ -207,6 +220,22 @@ fn main() {
                         std::process::exit(1);
                     }
                 }
+            }
+            Commands::Search {
+                query,
+                max,
+                output,
+                project_root,
+            } => {
+                let root = canonicalize_root(&project_root);
+                let output_dir = output.unwrap_or_else(|| {
+                    agal_core::config::ProjectConfig::load(&root)
+                        .output_dir
+                        .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                });
+                let report = agal_core::search_workspace(&root, &output_dir, &query, max);
+                print!("{report}");
+                return;
             }
             Commands::Context {
                 focus,
