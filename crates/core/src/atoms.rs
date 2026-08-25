@@ -5,6 +5,59 @@ use std::io::Write as IoWrite;
 use std::path::Path;
 use walkdir::WalkDir;
 
+/// Flat atom entry for HTML serialization.
+#[derive(serde::Serialize)]
+pub struct AtomEntry {
+    pub atom_type: String,
+    pub detail: String,
+    pub source: String,
+}
+
+/// Load all non-`fact` atoms from `<workspace>/<output_dir>/notes/` as flat entries.
+pub fn load_atoms(workspace: &Path, output_dir: &str) -> Vec<AtomEntry> {
+    let notes_dir = workspace.join(output_dir).join("notes");
+    if !notes_dir.exists() {
+        return Vec::new();
+    }
+    let mut entries: Vec<AtomEntry> = Vec::new();
+    for entry in WalkDir::new(&notes_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+        })
+    {
+        let path = entry.path();
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let rel = path
+            .strip_prefix(workspace)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("[ATOM]") {
+                continue;
+            }
+            let Some(t) = atom_type(trimmed) else { continue };
+            if t == "fact" {
+                continue;
+            }
+            entries.push(AtomEntry {
+                atom_type: t,
+                detail: atom_detail(trimmed),
+                source: rel.clone(),
+            });
+        }
+    }
+    entries
+}
+
 struct Atom {
     atom_type: String,
     detail: String,

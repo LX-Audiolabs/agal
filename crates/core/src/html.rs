@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
+use crate::atoms;
 use crate::config::ProjectConfig;
 use crate::findings::Finding;
 
@@ -142,10 +143,16 @@ pub fn render_html(
     let findings_json = serde_json::to_string(findings)
         .map_err(|e| format!("failed to serialize findings: {}", e))?;
 
+    let output_dir = _project_config.output_dir.as_deref().unwrap_or("agal");
+    let atom_entries = atoms::load_atoms(_project_root, output_dir);
+    let atoms_json = serde_json::to_string(&atom_entries)
+        .map_err(|e| format!("failed to serialize atoms: {}", e))?;
+
     let html = HTML_TEMPLATE
         .replace("{{NODES_JSON}}", &nodes_json)
         .replace("{{EDGES_JSON}}", &edges_json)
         .replace("{{FINDINGS_JSON}}", &findings_json)
+        .replace("{{ATOMS_JSON}}", &atoms_json)
         .replace("{{PROJECT_NAME}}", &html_escape(meta.project_name))
         .replace("{{GENERATED_AT}}", &html_escape(meta.generated_at))
         .replace("{{GRAPH_VERSION}}", &html_escape(meta.graph_version))
@@ -328,7 +335,17 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     #overview-card { top: 18px; right: 18px; text-align: right; }
     #findings-card { bottom: 18px; left: 18px; max-height: 32vh; display: flex; flex-direction: column; }
     #findings-card .card-body { overflow-y: auto; flex: 1; }
+    #atoms-card { bottom: 18px; left: 50%; transform: translateX(-50%); max-height: 36vh; max-width: 420px; width: 420px; display: flex; flex-direction: column; }
+    #atoms-card .card-body { overflow-y: auto; flex: 1; }
     #legend-card { bottom: 18px; right: 18px; }
+    .atom-item { font-size: 12px; line-height: 1.45; padding: 4px 0; border-bottom: 1px solid var(--panel-2); }
+    .atom-item:last-child { border-bottom: none; }
+    .atom-source { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .badge-lesson  { background: #0d9488; color: #fff; }
+    .badge-failure { background: #dc2626; color: #fff; }
+    .badge-decision { background: #2563eb; color: #fff; }
+    .badge-constraint { background: #d97706; color: #fff; }
+    .badge-atom { font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: 600; margin-right: 4px; display: inline-block; }
 
     .brand {
       font-size: 15px;
@@ -803,18 +820,21 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
     /* Scrollbars */
     .drawer-tab-panel::-webkit-scrollbar,
     #findings-card .card-body::-webkit-scrollbar,
+    #atoms-card .card-body::-webkit-scrollbar,
     #drawer-tabs::-webkit-scrollbar {
       width: 8px;
       height: 8px;
     }
     .drawer-tab-panel::-webkit-scrollbar-thumb,
     #findings-card .card-body::-webkit-scrollbar-thumb,
+    #atoms-card .card-body::-webkit-scrollbar-thumb,
     #drawer-tabs::-webkit-scrollbar-thumb {
       background: var(--panel-3);
       border-radius: 4px;
     }
     .drawer-tab-panel::-webkit-scrollbar-thumb:hover,
-    #findings-card .card-body::-webkit-scrollbar-thumb:hover {
+    #findings-card .card-body::-webkit-scrollbar-thumb:hover,
+    #atoms-card .card-body::-webkit-scrollbar-thumb:hover {
       background: var(--accent);
     }
 
@@ -836,6 +856,7 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       #overview-card .metric-grid { grid-template-columns: repeat(4, 1fr); }
       #overview-card .chip-row { justify-content: flex-start; }
       #findings-card { display: none; }
+      #atoms-card { display: none; }
       #legend-card { display: none; }
       #detail-drawer { width: 100%; }
       #drawer-resizer { display: none; }
@@ -899,6 +920,14 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       <div class="card-body" id="findings-body"></div>
     </div>
 
+    <div class="floating-card collapsed" id="atoms-card">
+      <div class="card-header">
+        <div class="card-title">Knowledge</div>
+        <button class="card-toggle" data-target="atoms-card" aria-label="expand">+</button>
+      </div>
+      <div class="card-body" id="atoms-body"></div>
+    </div>
+
     <div class="floating-card collapsed" id="legend-card">
       <div class="card-header">
         <div class="card-title">Legend</div>
@@ -924,6 +953,7 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       const nodes = {{NODES_JSON}};
       const edges = {{EDGES_JSON}};
       const findings = {{FINDINGS_JSON}};
+      const atoms = {{ATOMS_JSON}};
       const viewConfig = {{VIEW_CONFIG}};
       let cy = null;
       let selectedId = null;
@@ -1618,6 +1648,37 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
         });
       }
       renderFindings();
+
+      // Knowledge atoms (lesson / failure / decision / constraint)
+      function renderAtoms() {
+        const el = document.getElementById('atoms-body');
+        if (!atoms || !atoms.length) {
+          el.innerHTML = '<span class="dim">no atoms — use agal atom add</span>';
+          return;
+        }
+        const order = ['failure', 'lesson', 'decision', 'constraint'];
+        const byType = {};
+        atoms.forEach(a => {
+          const t = a.atom_type || 'other';
+          (byType[t] = byType[t] || []).push(a);
+        });
+        let html = '';
+        // Show ordered types first, then any remaining
+        const allTypes = [...order, ...Object.keys(byType).filter(t => !order.includes(t))];
+        allTypes.forEach(t => {
+          const list = byType[t];
+          if (!list || !list.length) return;
+          const badgeClass = `badge-atom badge-${t}`;
+          html += `<div class="finding-group"><div class="finding-group-title">${t} (${list.length})</div>`;
+          list.forEach(a => {
+            const src = a.source ? a.source.replace('agal/notes/', '') : '';
+            html += `<div class="atom-item"><span class="${badgeClass}">${t}</span>${a.detail || '—'}<div class="atom-source">${src}</div></div>`;
+          });
+          html += '</div>';
+        });
+        el.innerHTML = html;
+      }
+      renderAtoms();
 
       // Cytoscape
       const container = document.getElementById('cy');
