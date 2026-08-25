@@ -10,6 +10,7 @@ All notable changes to `agentic-audiolab` / `agal`.
 
 ### Added
 - **Knowledge panel in HTML** — floating card (bottom-center) showing all non-`fact` `[ATOM]` entries from notes, grouped by type (failure, lesson, decision, constraint) with color-coded badges. Collapses by default; hidden on mobile.
+- **`agal atom add --note <stem>`** — write atom to a specific crate note (`notes/aura-dsp.md`) instead of `_workspace.md`. Falls back to `_workspace.md` with a warning if the named note doesn't exist yet.
 - **Knowledge atoms in `agal context`** — context packs now include a `## knowledge atoms` section: all non-fact atoms from the focus node's note, plus up to 10 most recent `lesson`/`failure` atoms from `_workspace.md`. AI agents see code + distilled experience in one pack.
 
 ### Fixed
