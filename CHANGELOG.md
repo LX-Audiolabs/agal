@@ -6,6 +6,16 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [0.8.0] — 2026-08-25
+
+### Added
+- **`agal search <query>`** — walkdir keyword search over `agal/notes/` and `agal/skills/`; AND-logic, ranked by hit count; no new dependencies.
+- **`agal findings`** — aggregates `[ATOM]` entries from notes by type (`failure`, `lesson`, `decision`, `constraint`); `--types` to filter, `--all` for every non-`fact` atom.
+- **`agal atom add --type <type> <detail>`** — appends one `[ATOM]` line to `agal/notes/_workspace.md` in one command; creates the file if absent. Types: `lesson` (default), `failure`, `decision`, `constraint`.
+- **`agal context` skills auto-attach** — context packs now include matching skill files from `agal/skills/`, matched by trigger keywords against the focus node name and frameworks.
+- **5 AURA-grounded DSP skill files** (`skills/00-core/`): `dsp-denormals`, `dsp-smoothing`, `dsp-delay-lines`, `dsp-filters-svf`, `dsp-util` — derived from actual `aura-dsp` source types (`ParamSmoother`, `BiquadFilter`, `StateVariableFilter`, `DelayLine`, `dsp_util`).
+- **`dsp` trigger** added to all core DSP skills so `agal context --focus aura-dsp` auto-attaches them.
+
 ## [0.7.1] — 2026-08-18
 
 ### Added
