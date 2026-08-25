@@ -1564,7 +1564,33 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
         skill_terms.push(fw.clone());
     }
     let skill_term_refs: Vec<&str> = skill_terms.iter().map(String::as_str).collect();
-    let matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
+    let mut matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
+    // Policy skills (01-policy/) always attach — they are workspace-wide discipline, not node-specific.
+    let policy_dir = project_root.join(&output_dir).join("skills").join("01-policy");
+    if policy_dir.exists() {
+        for entry in walkdir::WalkDir::new(&policy_dir)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("md"))
+        {
+            let rel = entry.path()
+                .strip_prefix(project_root)
+                .unwrap_or(entry.path())
+                .to_string_lossy()
+                .replace('\\', "/");
+            if matched_skills.iter().any(|s| s.rel_path == rel) {
+                continue; // already matched
+            }
+            if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                matched_skills.push(atoms::SkillMatch {
+                    rel_path: rel,
+                    content,
+                    matched_triggers: vec!["policy".to_string()],
+                });
+            }
+        }
+    }
 
     // Load ATOMs for context:
     // - node-specific note: all non-fact atoms
