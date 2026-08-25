@@ -1852,6 +1852,117 @@ pub fn findings_report(project_root: &Path, output_dir: &str, types: &[&str]) ->
     atoms::aggregate(project_root, output_dir, types)
 }
 
+/// Coverage report: per-node table showing note presence, atom count, and matched skill count.
+pub fn coverage_report(project_root: &Path) -> Result<String, String> {
+    use std::fmt::Write as _;
+    let graph = scan(project_root, false)?;
+    let output_dir = config::ProjectConfig::load(project_root)
+        .output_dir
+        .unwrap_or_else(|| DEFAULT_OUTPUT_DIR.to_string());
+    let notes_dir = project_root.join(&output_dir).join("notes");
+
+    struct Row {
+        name: String,
+        kind: String,
+        has_note: bool,
+        atom_count: usize,
+        skill_count: usize,
+    }
+
+    let mut rows: Vec<Row> = graph
+        .nodes
+        .iter()
+        .map(|node| {
+            let note_path = notes_dir.join(format!("{}.md", node.name));
+            let has_note = note_path.exists();
+            let atom_count = if has_note {
+                atoms::load_atoms_from_file(&note_path, &node.name, &[]).len()
+            } else {
+                0
+            };
+            let mut terms: Vec<String> = node
+                .name
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .collect();
+            for fw in &node.frameworks {
+                terms.push(fw.clone());
+            }
+            let term_refs: Vec<&str> = terms.iter().map(String::as_str).collect();
+            let skill_count = atoms::match_skills(project_root, &output_dir, &term_refs).len();
+            Row {
+                name: node.name.clone(),
+                kind: node.kind.clone(),
+                has_note,
+                atom_count,
+                skill_count,
+            }
+        })
+        .collect();
+
+    // Sort: kind order (plugin, crate, member), then alphabetical.
+    let kind_order = |k: &str| match k {
+        "plugin" => 0,
+        "crate" => 1,
+        _ => 2,
+    };
+    rows.sort_by(|a, b| {
+        kind_order(a.kind.as_str())
+            .cmp(&kind_order(b.kind.as_str()))
+            .then(a.name.cmp(&b.name))
+    });
+
+    let no_note = rows.iter().filter(|r| !r.has_note).count();
+    let no_atoms = rows.iter().filter(|r| r.atom_count == 0).count();
+    let no_skills = rows.iter().filter(|r| r.skill_count == 0).count();
+
+    let mut out = String::new();
+    let _ = writeln!(out, "# agal coverage — {}\n", graph.project_name);
+    let _ = writeln!(
+        out,
+        "{} nodes · {} missing note · {} no atoms · {} no skills\n",
+        rows.len(),
+        no_note,
+        no_atoms,
+        no_skills
+    );
+    let _ = writeln!(out, "| node | kind | note | atoms | skills |");
+    let _ = writeln!(out, "|------|------|------|-------|--------|");
+    for r in &rows {
+        let note_icon = if r.has_note { "✓" } else { "✗" };
+        let atom_str = if r.atom_count == 0 {
+            "—".to_string()
+        } else {
+            r.atom_count.to_string()
+        };
+        let skill_str = if r.skill_count == 0 {
+            "**✗**".to_string()
+        } else {
+            r.skill_count.to_string()
+        };
+        let _ = writeln!(
+            out,
+            "| `{}` | {} | {} | {} | {} |",
+            r.name, r.kind, note_icon, atom_str, skill_str
+        );
+    }
+
+    // Gap summary
+    let gaps: Vec<&Row> = rows
+        .iter()
+        .filter(|r| r.skill_count == 0 && r.kind != "member")
+        .collect();
+    if !gaps.is_empty() {
+        let _ = writeln!(out, "\n## skill gaps (no matched skills)\n");
+        for g in &gaps {
+            let _ = writeln!(out, "- `{}` ({})", g.name, g.kind);
+        }
+    }
+
+    Ok(out)
+}
+
 /// Returns an optional warning string (e.g. fallback notice).
 pub fn atom_add(
     project_root: &Path,

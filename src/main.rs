@@ -53,6 +53,11 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// Coverage map: note presence, atom count, and skill match per node
+    Coverage {
+        #[arg(default_value = ".")]
+        project_root: std::path::PathBuf,
+    },
     /// Append an [ATOM] entry to agal/notes/_workspace.md
     Atom {
         #[command(subcommand)]
@@ -250,6 +255,19 @@ fn main() {
             Commands::Impact { name, project_root } => {
                 let root = canonicalize_root(&project_root);
                 match agal_core::impact_report(&root, &name) {
+                    Ok(report) => {
+                        print!("{report}");
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::Coverage { project_root } => {
+                let root = canonicalize_root(&project_root);
+                match agal_core::coverage_report(&root) {
                     Ok(report) => {
                         print!("{report}");
                         return;
