@@ -1814,6 +1814,15 @@ pub fn findings_report(project_root: &Path, output_dir: &str, types: &[&str]) ->
     atoms::aggregate(project_root, output_dir, types)
 }
 
+pub fn atom_add(
+    project_root: &Path,
+    output_dir: &str,
+    atom_type: &str,
+    detail: &str,
+) -> Result<(), String> {
+    atoms::append_atom(project_root, output_dir, atom_type, detail)
+}
+
 /// Public entry point used by the `agal` CLI.
 pub fn generate(project_root: &Path, options: &GenerateOptions) -> Result<(), String> {
     if options.install_hook {

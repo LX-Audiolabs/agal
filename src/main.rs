@@ -53,6 +53,11 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// Append an [ATOM] entry to agal/notes/_workspace.md
+    Atom {
+        #[command(subcommand)]
+        action: AtomCmd,
+    },
     /// Aggregate [ATOM] entries from notes by type
     Findings {
         /// Atom types to include, comma-separated (default: failure,lesson)
@@ -119,6 +124,23 @@ enum SkillsCmd {
         output: Option<String>,
         #[arg(default_value = ".")]
         project_root: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum AtomCmd {
+    /// Add an [ATOM] entry to _workspace.md
+    Add {
+        /// Atom type: lesson, failure, decision, constraint
+        #[arg(long, short, default_value = "lesson")]
+        r#type: String,
+        /// The detail text
+        detail: String,
+        /// Output dir under project root (default: agal)
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: std::path::PathBuf,
     },
 }
 
@@ -235,6 +257,27 @@ fn main() {
                     }
                 }
             }
+            Commands::Atom { action } => match action {
+                AtomCmd::Add {
+                    r#type,
+                    detail,
+                    output,
+                    project_root,
+                } => {
+                    let root = canonicalize_root(&project_root);
+                    let output_dir = output.unwrap_or_else(|| {
+                        agal_core::config::ProjectConfig::load(&root)
+                            .output_dir
+                            .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                    });
+                    if let Err(e) = agal_core::atom_add(&root, &output_dir, &r#type, &detail) {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                    println!("[ATOM] type={} | detail={}", r#type, detail);
+                    return;
+                }
+            },
             Commands::Findings {
                 types,
                 all,

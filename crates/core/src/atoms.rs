@@ -1,6 +1,7 @@
-//! ATOM utilities: aggregate [ATOM] entries from notes; match skills by trigger.
+//! ATOM utilities: aggregate [ATOM] entries from notes; match skills by trigger; append atoms.
 
 use std::fmt::Write as _;
+use std::io::Write as IoWrite;
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -250,4 +251,41 @@ fn parse_triggers(content: &str) -> Vec<String> {
         }
     }
     Vec::new()
+}
+
+/// Append one `[ATOM]` line to `<workspace>/<output_dir>/notes/_workspace.md`.
+///
+/// Creates the file (and parent dirs) if absent.
+/// Valid types: `lesson`, `failure`, `decision`, `constraint`, `fact`.
+pub fn append_atom(
+    workspace: &Path,
+    output_dir: &str,
+    atom_type: &str,
+    detail: &str,
+) -> Result<(), String> {
+    let notes_dir = workspace.join(output_dir).join("notes");
+    std::fs::create_dir_all(&notes_dir)
+        .map_err(|e| format!("cannot create notes dir: {}", e))?;
+
+    let ws_file = notes_dir.join("_workspace.md");
+
+    // Create with minimal template if absent.
+    if !ws_file.exists() {
+        std::fs::write(
+            &ws_file,
+            "# Workspace memory\n\n**Summary:** Durable cross-session notes for agents.\n\n## Atoms\n\n",
+        )
+        .map_err(|e| format!("cannot create _workspace.md: {}", e))?;
+    }
+
+    // Append the atom line.
+    let line = format!("[ATOM] type={} | detail={}\n", atom_type, detail);
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&ws_file)
+        .map_err(|e| format!("cannot open _workspace.md: {}", e))?;
+    file.write_all(line.as_bytes())
+        .map_err(|e| format!("cannot write atom: {}", e))?;
+
+    Ok(())
 }
