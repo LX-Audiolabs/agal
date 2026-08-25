@@ -341,39 +341,55 @@ fn parse_triggers(content: &str) -> Vec<String> {
     Vec::new()
 }
 
-/// Append one `[ATOM]` line to `<workspace>/<output_dir>/notes/_workspace.md`.
+/// Append one `[ATOM]` line to a note in `<workspace>/<output_dir>/notes/`.
 ///
-/// Creates the file (and parent dirs) if absent.
-/// Valid types: `lesson`, `failure`, `decision`, `constraint`, `fact`.
+/// - `note`: target note stem (e.g. `"aura-dsp"` → `notes/aura-dsp.md`).
+///   Pass `None` to target `_workspace.md` (always created if absent).
+///   If a named note doesn't exist, falls back to `_workspace.md` and returns a warning.
+/// Valid types: `lesson`, `failure`, `decision`, `constraint`.
 pub fn append_atom(
     workspace: &Path,
     output_dir: &str,
     atom_type: &str,
     detail: &str,
-) -> Result<(), String> {
+    note: Option<&str>,
+) -> Result<String, String> {
     let notes_dir = workspace.join(output_dir).join("notes");
     std::fs::create_dir_all(&notes_dir)
         .map_err(|e| format!("cannot create notes dir: {}", e))?;
 
-    let ws_file = notes_dir.join("_workspace.md");
+    let (target, fallback_msg) = if let Some(name) = note {
+        let p = notes_dir.join(format!("{}.md", name));
+        if p.exists() {
+            (p, None)
+        } else {
+            // Named note missing — fall back to _workspace.md
+            let msg = format!(
+                "note `{}.md` not found in `{}/notes/` — wrote to _workspace.md instead. Run `agal .` first to generate crate notes.",
+                name, output_dir
+            );
+            (notes_dir.join("_workspace.md"), Some(msg))
+        }
+    } else {
+        (notes_dir.join("_workspace.md"), None)
+    };
 
-    // Create with minimal template if absent.
-    if !ws_file.exists() {
+    // Create _workspace.md if absent.
+    if !target.exists() {
         std::fs::write(
-            &ws_file,
+            &target,
             "# Workspace memory\n\n**Summary:** Durable cross-session notes for agents.\n\n## Atoms\n\n",
         )
         .map_err(|e| format!("cannot create _workspace.md: {}", e))?;
     }
 
-    // Append the atom line.
     let line = format!("[ATOM] type={} | detail={}\n", atom_type, detail);
     let mut file = std::fs::OpenOptions::new()
         .append(true)
-        .open(&ws_file)
-        .map_err(|e| format!("cannot open _workspace.md: {}", e))?;
+        .open(&target)
+        .map_err(|e| format!("cannot open {}: {}", target.display(), e))?;
     file.write_all(line.as_bytes())
         .map_err(|e| format!("cannot write atom: {}", e))?;
 
-    Ok(())
+    Ok(fallback_msg.unwrap_or_default())
 }

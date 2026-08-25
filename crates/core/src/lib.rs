@@ -1852,13 +1852,15 @@ pub fn findings_report(project_root: &Path, output_dir: &str, types: &[&str]) ->
     atoms::aggregate(project_root, output_dir, types)
 }
 
+/// Returns an optional warning string (e.g. fallback notice).
 pub fn atom_add(
     project_root: &Path,
     output_dir: &str,
     atom_type: &str,
     detail: &str,
-) -> Result<(), String> {
-    atoms::append_atom(project_root, output_dir, atom_type, detail)
+    note: Option<&str>,
+) -> Result<String, String> {
+    atoms::append_atom(project_root, output_dir, atom_type, detail, note)
 }
 
 /// Public entry point used by the `agal` CLI.

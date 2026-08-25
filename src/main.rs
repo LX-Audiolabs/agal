@@ -129,13 +129,16 @@ enum SkillsCmd {
 
 #[derive(Subcommand)]
 enum AtomCmd {
-    /// Add an [ATOM] entry to _workspace.md
+    /// Add an [ATOM] entry to a note (default: _workspace.md)
     Add {
         /// Atom type: lesson, failure, decision, constraint
         #[arg(long, short, default_value = "lesson")]
         r#type: String,
         /// The detail text
         detail: String,
+        /// Target note stem (e.g. aura-dsp → notes/aura-dsp.md); default: _workspace.md
+        #[arg(long, short)]
+        note: Option<String>,
         /// Output dir under project root (default: agal)
         #[arg(short, long)]
         output: Option<String>,
@@ -261,6 +264,7 @@ fn main() {
                 AtomCmd::Add {
                     r#type,
                     detail,
+                    note,
                     output,
                     project_root,
                 } => {
@@ -270,11 +274,19 @@ fn main() {
                             .output_dir
                             .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
                     });
-                    if let Err(e) = agal_core::atom_add(&root, &output_dir, &r#type, &detail) {
-                        eprintln!("error: {e}");
-                        std::process::exit(1);
+                    let note_ref = note.as_deref();
+                    match agal_core::atom_add(&root, &output_dir, &r#type, &detail, note_ref) {
+                        Ok(warn) => {
+                            println!("[ATOM] type={} | detail={}", r#type, detail);
+                            if !warn.is_empty() {
+                                eprintln!("warn: {warn}");
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("error: {e}");
+                            std::process::exit(1);
+                        }
                     }
-                    println!("[ATOM] type={} | detail={}", r#type, detail);
                     return;
                 }
             },
