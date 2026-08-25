@@ -11,6 +11,9 @@ All notable changes to `agentic-audiolab` / `agal`.
 ### Added
 - **Knowledge panel in HTML** — floating card (bottom-center) showing all non-`fact` `[ATOM]` entries from notes, grouped by type (failure, lesson, decision, constraint) with color-coded badges. Collapses by default; hidden on mobile.
 
+### Fixed
+- **Template placeholder atoms filtered** — `[ATOM] type=decision|lesson|constraint | detail=…` seed lines (written into every new note) no longer appear in `agal findings`, `agal context`, or the Knowledge HTML panel.
+
 ## [0.8.0] — 2026-08-25
 
 ### Added
