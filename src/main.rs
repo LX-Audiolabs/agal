@@ -53,6 +53,20 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// Aggregate [ATOM] entries from notes by type
+    Findings {
+        /// Atom types to include, comma-separated (default: failure,lesson)
+        #[arg(long, default_value = "failure,lesson")]
+        types: String,
+        /// Pass --all to include every type except `fact`
+        #[arg(long)]
+        all: bool,
+        /// Output dir under project root (default: agal)
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: std::path::PathBuf,
+    },
     /// Search notes and synced skills for keywords
     Search {
         /// Query string (space-separated keywords, all must match per line)
@@ -220,6 +234,28 @@ fn main() {
                         std::process::exit(1);
                     }
                 }
+            }
+            Commands::Findings {
+                types,
+                all,
+                output,
+                project_root,
+            } => {
+                let root = canonicalize_root(&project_root);
+                let output_dir = output.unwrap_or_else(|| {
+                    agal_core::config::ProjectConfig::load(&root)
+                        .output_dir
+                        .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                });
+                let type_vec: Vec<String> = if all {
+                    vec![]
+                } else {
+                    types.split(',').map(|s| s.trim().to_string()).collect()
+                };
+                let type_refs: Vec<&str> = type_vec.iter().map(String::as_str).collect();
+                let report = agal_core::findings_report(&root, &output_dir, &type_refs);
+                print!("{report}");
+                return;
             }
             Commands::Search {
                 query,

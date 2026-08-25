@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 pub mod agent;
 pub mod ast;
+pub mod atoms;
 pub mod config;
 pub mod delta;
 pub mod findings;
@@ -1764,6 +1765,10 @@ pub fn search_workspace(
     max_results: usize,
 ) -> String {
     search::search(project_root, output_dir, query, max_results)
+}
+
+pub fn findings_report(project_root: &Path, output_dir: &str, types: &[&str]) -> String {
+    atoms::aggregate(project_root, output_dir, types)
 }
 
 /// Public entry point used by the `agal` CLI.
