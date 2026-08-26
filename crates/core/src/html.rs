@@ -194,10 +194,10 @@ pub fn write_html(
 
 fn node_colors(node: &super::Node) -> (String, Option<String>) {
     let fill = match node.kind.as_str() {
-        "plugin" => "#8b5cf6",
-        "crate" => "#64748b",
-        "member" => "#475569",
-        _ => "#475569",
+        "plugin" => "#a78bfa", // violet
+        "crate"  => "#38bdf8", // sky blue
+        "member" => "#fb923c", // orange
+        _        => "#94a3b8", // slate fallback
     };
     let border = match node.migration_status.as_deref() {
         Some("migrated") => Some("#10b981".to_string()),
@@ -234,8 +234,8 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       --warn: #f59e0b;
       --err: #ef4444;
       --info: #38bdf8;
-      --plugin: #8b5cf6;
-      --crate: #64748b;
+      --plugin: #a78bfa;
+      --crate: #38bdf8;
       --edge-dep: #334155;
       --edge-ui: #6366f1;
       --edge-ipc: #a855f7;
@@ -1292,92 +1292,54 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
         }
       }
 
-      // Compact square around viewport center. Side scales with node count
-      // (never fill whole window — that made 12 nodes look like dust in a void).
+      // Full canvas bounding box — let fit:true handle zoom.
+      // Compact BB caused extreme zoom-in and unreadable labels.
       function compactBB(n) {
         const w = container.clientWidth || 800;
         const h = container.clientHeight || 600;
-        // ~90–220px radius cluster; grow gently with n
-        const side = Math.max(220, Math.min(480, 160 + n * 22));
-        const s = Math.min(side, Math.min(w, h) * 0.62);
-        return {
-          x1: (w - s) / 2,
-          y1: (h - s) / 2,
-          w: s,
-          h: s
-        };
+        return { x1: 0, y1: 0, w, h };
+      }
+
+      /** Resize nodes by edge-degree so hubs are visually larger. */
+      function sizeByDegree(eles) {
+        eles.nodes().forEach(n => {
+          const d = n.degree(false);
+          const sz = Math.max(8, Math.min(22, 7 + d * 2));
+          n.style({ width: sz, height: sz });
+        });
       }
 
       /**
-       * Compact disk (not full-viewport explosion):
-       * - overview/all: 2-ring concentric — crates center, plugins outer
-       * - plugin|crate only: tight circle
-       * - focus/search: cose in same compact box
+       * Force-directed layout for all modes (Obsidian-style):
+       * high-degree nodes gravitate to center naturally via cose repulsion.
        */
       function runDiskLayout(eles, mode) {
         if (!eles || eles.length === 0) return;
         const n = eles.length;
         const bb = compactBB(n);
-        const pad = 36;
+        const pad = 28;
 
-        if (mode === 'overview' || mode === 'all') {
-          eles.layout({
-            name: 'concentric',
-            boundingBox: bb,
-            fit: true,
-            padding: pad,
-            avoidOverlap: true,
-            minNodeSpacing: 28,
-            equidistant: false,
-            spacingFactor: 0.9,
-            startAngle: -Math.PI / 2,
-            clockwise: true,
-            nodeDimensionsIncludeLabels: true,
-            // exactly two rings: hubs in, plugins out
-            concentric: function(node) {
-              return node.data('kind') === 'crate' ? 2 : 1;
-            },
-            levelWidth: function() { return 1; }
-          }).run();
-          return;
-        }
-
-        if (mode === 'plugin' || mode === 'crate') {
-          const radius = Math.max(90, Math.min(200, 40 + n * 14));
-          eles.layout({
-            name: 'circle',
-            boundingBox: bb,
-            radius: radius,
-            fit: true,
-            padding: pad,
-            avoidOverlap: true,
-            spacingFactor: 0.95,
-            startAngle: -Math.PI / 2,
-            clockwise: true,
-            nodeDimensionsIncludeLabels: true
-          }).run();
-          return;
-        }
-
-        // focus / search: compact force cloud
+        // concentric by degree: high-degree nodes → inner rings, leaves → outer.
         eles.layout({
-          name: 'cose',
+          name: 'concentric',
           boundingBox: bb,
-          fit: true,
-          padding: pad,
-          animate: false,
-          randomize: false,
-          componentSpacing: 24,
-          nodeRepulsion: 450000,
-          idealEdgeLength: 72,
-          edgeElasticity: 80,
-          nestingFactor: 1.2,
-          gravity: 2.4,
-          numIter: 1800,
-          initialTemp: 120,
-          coolingFactor: 0.95,
-          minTemp: 1.0
+          fit: false,
+          avoidOverlap: true,
+          minNodeSpacing: 24,
+          spacingFactor: 1.4,
+          nodeDimensionsIncludeLabels: false,
+          startAngle: -Math.PI / 2,
+          clockwise: true,
+          concentric: function(node) { return node.degree(false); },
+          levelWidth: function(nodes) {
+            const maxDeg = Math.max(...nodes.map(n => n.degree(false)));
+            return Math.max(1, Math.ceil(maxDeg / 4));
+          }
         }).run();
+        sizeByDegree(eles);
+        cy.fit(eles, 80);
+        const z = cy.zoom();
+        if (z > 1.2) cy.zoom({ level: 1.2, renderedPosition: { x: cy.width()/2, y: cy.height()/2 } });
       }
 
       function hubCrateIds() {
@@ -1537,13 +1499,13 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
       // Legends
       const legend = document.getElementById('legend');
       const legendItems = [
-        { label: 'plugin', color: '#8b5cf6' },
-        { label: 'crate', color: '#64748b' },
+        { label: 'plugin', color: '#a78bfa' },
+        { label: 'crate', color: '#38bdf8' },
         { label: 'migrated', color: '#10b981', ring: true },
         { label: 'legacy', color: '#f59e0b', ring: true },
       ];
       if (nodes.some(n => n.kind === 'member')) {
-        legendItems.splice(2, 0, { label: 'member', color: '#475569' });
+        legendItems.splice(2, 0, { label: 'member', color: '#fb923c' });
       }
       legendItems.forEach(item => {
         const div = document.createElement('div');
@@ -1698,6 +1660,8 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
         container: container,
         elements: elements,
         wheelSensitivity: 0.25,
+        minZoom: 0.3,
+        maxZoom: 3.0,
         // Positions come from runDiskLayout (applyFilters) — avoid tall cose sausage.
         layout: { name: 'null' },
         style: [
@@ -1705,16 +1669,16 @@ const HTML_TEMPLATE: &str = r#"<!DOCTYPE html>
             'background-color': 'data(color)',
             'label': 'data(label)',
             'color': '#e2e8f0',
-            'font-size': '13px',
+            'font-size': '9px',
             'font-weight': '600',
             'font-family': 'Inter, Segoe UI, system-ui, sans-serif',
             'text-valign': 'bottom',
             'text-halign': 'center',
-            'text-margin-y': 8,
+            'text-margin-y': 4,
             'text-outline-color': '#0b0c10',
             'text-outline-width': 3,
-            'width': 36,
-            'height': 36,
+            'width': 10,
+            'height': 10,
             'border-width': 3,
             'border-color': '#0b0c10',
             'transition-property': 'background-color, border-color, width, height, opacity',

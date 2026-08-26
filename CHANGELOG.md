@@ -6,6 +6,14 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [0.9.0] — 2026-08-26
+
+### Added
+- **`agal serve`** — MCP server over stdio (`rmcp` + `tokio`); exposes `context`, `search`, `findings`, `atom_add` as tools for Claude Code / AI agent direct integration without copy-paste.
+- **`agal context --explain`** — replaces full skill content with a compact trigger-reason table showing which query terms fired each skill match. Useful for debugging context packs without token bloat.
+- **Tantivy full-text search** — `agal search` now uses BM25 ranking and in-RAM Tantivy index instead of linear walkdir scan. Multi-term AND logic preserved; adds relevance ranking and snippet extraction.
+- **Token estimate in context packs** — every markdown context pack footer now shows `estimated tokens: ~N` based on output length.
+
 ## [Unreleased]
 
 ### Added
