@@ -104,6 +104,9 @@ enum Commands {
         /// Output format: md or json (default: md)
         #[arg(long, default_value = "md")]
         format: String,
+        /// Show which triggers fired per skill instead of full skill content
+        #[arg(long)]
+        explain: bool,
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
@@ -351,6 +354,7 @@ fn main() {
                 diff,
                 budget,
                 format,
+                explain,
                 project_root,
             } => {
                 let root = canonicalize_root(&project_root);
@@ -370,6 +374,7 @@ fn main() {
                     diff,
                     budget_tokens: budget,
                     format: fmt,
+                    explain,
                 };
                 match agal_core::context_pack(&root, &opts) {
                     Ok(report) => {

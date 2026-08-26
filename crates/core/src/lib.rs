@@ -1479,6 +1479,8 @@ pub struct ContextPackOptions {
     pub diff: Option<String>,
     pub budget_tokens: usize,
     pub format: ContextPackFormat,
+    /// When true, skills section shows a trigger-reason table instead of full content.
+    pub explain: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -1660,6 +1662,8 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
             changed_nodes: &changed_node_names,
             budget_tokens: opts.budget_tokens,
             diff_ref: opts.diff.as_deref(),
+            skill_terms: &skill_terms,
+            explain: opts.explain,
         })),
     }
 }
@@ -1697,6 +1701,8 @@ struct ContextPackRenderData<'g> {
     changed_nodes: &'g [&'g str],
     budget_tokens: usize,
     diff_ref: Option<&'g str>,
+    skill_terms: &'g [String],
+    explain: bool,
 }
 
 fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
@@ -1713,6 +1719,8 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
         changed_nodes,
         budget_tokens,
         diff_ref,
+        skill_terms,
+        explain,
     } = data;
     let mut s = String::new();
     let _ = writeln!(s, "# agal context pack: {}", node.name);
@@ -1840,14 +1848,50 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
 
     if !matched_skills.is_empty() {
         let _ = writeln!(s, "## relevant skills ({} matched)\n", matched_skills.len());
-        for sk in matched_skills {
+        if explain {
             let _ = writeln!(
                 s,
-                "### `{}` (triggers: {})\n",
-                sk.rel_path,
-                sk.matched_triggers.join(", ")
+                "**explain mode** — query terms: {}\n",
+                skill_terms
+                    .iter()
+                    .map(|t| format!("`{t}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
-            let _ = writeln!(s, "{}\n", sk.content.trim());
+            let _ = writeln!(s, "| skill | triggers fired | source |");
+            let _ = writeln!(s, "|-------|---------------|--------|");
+            for sk in matched_skills {
+                let source = if sk.matched_triggers == ["policy"] {
+                    "always-attach (01-policy/)".to_string()
+                } else {
+                    format!(
+                        "node terms: {}",
+                        sk.matched_triggers
+                            .iter()
+                            .map(|t| format!("`{t}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                let _ = writeln!(
+                    s,
+                    "| `{}` | {} | {} |",
+                    sk.rel_path,
+                    sk.matched_triggers.join(", "),
+                    source
+                );
+            }
+            let _ = writeln!(s);
+        } else {
+            for sk in matched_skills {
+                let _ = writeln!(
+                    s,
+                    "### `{}` (triggers: {})\n",
+                    sk.rel_path,
+                    sk.matched_triggers.join(", ")
+                );
+                let _ = writeln!(s, "{}\n", sk.content.trim());
+            }
         }
     }
 
@@ -1860,6 +1904,8 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
         graph.findings.len()
     );
     let _ = writeln!(s, "- generated: `{}`", graph.generated_at);
+    let estimated = s.len() / 4;
+    let _ = writeln!(s, "- **estimated tokens:** ~{estimated}");
 
     s
 }
