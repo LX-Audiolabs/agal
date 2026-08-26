@@ -630,8 +630,8 @@ mod tests {
     #[test]
     fn group_policy() {
         let s = parse_selection("policy").unwrap();
-        // caveman, ponytail, versioning
-        assert_eq!(s.files.len(), 3);
+        // caveman, ponytail, rust-workflow, versioning
+        assert_eq!(s.files.len(), 4);
         assert!(s.files.iter().all(|f| f.group == SkillGroup::Policy));
     }
 

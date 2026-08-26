@@ -73,13 +73,16 @@ pub fn search(workspace: &Path, output_dir: &str, query: &str, max_results: usiz
                     .unwrap_or(path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                matches.push(FileMatch { rel_path: rel, hits });
+                matches.push(FileMatch {
+                    rel_path: rel,
+                    hits,
+                });
             }
         }
     }
 
     // Rank by hit count (most matches first).
-    matches.sort_by(|a, b| b.hits.len().cmp(&a.hits.len()));
+    matches.sort_by_key(|a| std::cmp::Reverse(a.hits.len()));
     matches.truncate(max_results);
 
     if matches.is_empty() {

@@ -15,7 +15,11 @@ pub struct AtomEntry {
 
 /// Load non-`fact` atoms from a single note file.
 /// `include_types`: if empty, include all non-fact; else only listed types.
-pub fn load_atoms_from_file(path: &Path, source_label: &str, include_types: &[&str]) -> Vec<AtomEntry> {
+pub fn load_atoms_from_file(
+    path: &Path,
+    source_label: &str,
+    include_types: &[&str],
+) -> Vec<AtomEntry> {
     let content = match std::fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return Vec::new(),
@@ -26,7 +30,9 @@ pub fn load_atoms_from_file(path: &Path, source_label: &str, include_types: &[&s
         if !trimmed.starts_with("[ATOM]") {
             continue;
         }
-        let Some(t) = atom_type(trimmed) else { continue };
+        let Some(t) = atom_type(trimmed) else {
+            continue;
+        };
         if t == "fact" {
             continue;
         }
@@ -54,8 +60,7 @@ pub fn load_atoms(workspace: &Path, output_dir: &str) -> Vec<AtomEntry> {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+            e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("md")
         })
     {
         let path = entry.path();
@@ -73,7 +78,9 @@ pub fn load_atoms(workspace: &Path, output_dir: &str) -> Vec<AtomEntry> {
             if !trimmed.starts_with("[ATOM]") {
                 continue;
             }
-            let Some(t) = atom_type(trimmed) else { continue };
+            let Some(t) = atom_type(trimmed) else {
+                continue;
+            };
             if t == "fact" {
                 continue;
             }
@@ -136,8 +143,7 @@ pub fn aggregate(workspace: &Path, output_dir: &str, types: &[&str]) -> String {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+            e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("md")
         })
     {
         let path = entry.path();
@@ -247,20 +253,13 @@ pub struct SkillMatch {
 ///
 /// `query_terms` = focus node name tokens + framework names + extra keywords.
 /// Matching is case-insensitive substring: trigger "biquad" matches term "biquadfilter".
-pub fn match_skills(
-    workspace: &Path,
-    output_dir: &str,
-    query_terms: &[&str],
-) -> Vec<SkillMatch> {
+pub fn match_skills(workspace: &Path, output_dir: &str, query_terms: &[&str]) -> Vec<SkillMatch> {
     let skills_dir = workspace.join(output_dir).join("skills");
     if !skills_dir.exists() || query_terms.is_empty() {
         return Vec::new();
     }
 
-    let lower_terms: Vec<String> = query_terms
-        .iter()
-        .map(|t| t.to_ascii_lowercase())
-        .collect();
+    let lower_terms: Vec<String> = query_terms.iter().map(|t| t.to_ascii_lowercase()).collect();
 
     let mut matches: Vec<SkillMatch> = Vec::new();
 
@@ -269,8 +268,7 @@ pub fn match_skills(
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
-            e.file_type().is_file()
-                && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+            e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("md")
         })
     {
         let path = entry.path();
@@ -346,6 +344,7 @@ fn parse_triggers(content: &str) -> Vec<String> {
 /// - `note`: target note stem (e.g. `"aura-dsp"` → `notes/aura-dsp.md`).
 ///   Pass `None` to target `_workspace.md` (always created if absent).
 ///   If a named note doesn't exist, falls back to `_workspace.md` and returns a warning.
+///
 /// Valid types: `lesson`, `failure`, `decision`, `constraint`.
 pub fn append_atom(
     workspace: &Path,
@@ -355,8 +354,7 @@ pub fn append_atom(
     note: Option<&str>,
 ) -> Result<String, String> {
     let notes_dir = workspace.join(output_dir).join("notes");
-    std::fs::create_dir_all(&notes_dir)
-        .map_err(|e| format!("cannot create notes dir: {}", e))?;
+    std::fs::create_dir_all(&notes_dir).map_err(|e| format!("cannot create notes dir: {}", e))?;
 
     let (target, fallback_msg) = if let Some(name) = note {
         let p = notes_dir.join(format!("{}.md", name));

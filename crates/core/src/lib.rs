@@ -1566,15 +1566,22 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
     let skill_term_refs: Vec<&str> = skill_terms.iter().map(String::as_str).collect();
     let mut matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
     // Policy skills (01-policy/) always attach — they are workspace-wide discipline, not node-specific.
-    let policy_dir = project_root.join(&output_dir).join("skills").join("01-policy");
+    let policy_dir = project_root
+        .join(&output_dir)
+        .join("skills")
+        .join("01-policy");
     if policy_dir.exists() {
         for entry in walkdir::WalkDir::new(&policy_dir)
             .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("md"))
+            .filter(|e| {
+                e.file_type().is_file()
+                    && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+            })
         {
-            let rel = entry.path()
+            let rel = entry
+                .path()
                 .strip_prefix(project_root)
                 .unwrap_or(entry.path())
                 .to_string_lossy()
@@ -1603,11 +1610,8 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
         node_atoms.extend(atoms::load_atoms_from_file(&node_note, &node.name, &[]));
     }
     // Workspace lessons/failures — cap at 10 most recent (tail of file)
-    let mut ws_atoms = atoms::load_atoms_from_file(
-        &workspace_note,
-        "_workspace",
-        &["lesson", "failure"],
-    );
+    let mut ws_atoms =
+        atoms::load_atoms_from_file(&workspace_note, "_workspace", &["lesson", "failure"]);
     if ws_atoms.len() > 10 {
         let skip = ws_atoms.len() - 10;
         ws_atoms.drain(..skip);
