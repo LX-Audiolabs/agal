@@ -340,6 +340,7 @@ fn context_pack_focuses_node() {
         diff: None,
         budget_tokens: 4000,
         format: agal_core::ContextPackFormat::Markdown,
+        explain: false,
     };
     let pack = agal_core::context_pack(&root, &opts).expect("context pack");
     assert!(
@@ -361,6 +362,7 @@ fn context_pack_json_format() {
         diff: None,
         budget_tokens: 2000,
         format: agal_core::ContextPackFormat::Json,
+        explain: false,
     };
     let pack = agal_core::context_pack(&root, &opts).expect("context pack json");
     let value: serde_json::Value = serde_json::from_str(&pack).expect("valid json");

@@ -1,3 +1,5 @@
+mod mcp;
+
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -90,6 +92,11 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: std::path::PathBuf,
     },
+    /// Start an MCP server over stdio (for Claude Code / AI tool integration)
+    Serve {
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
     /// Build a focused, token-budgeted context pack for one node
     Context {
         /// Crate or plugin name to focus on (optional when --diff is given)
@@ -179,6 +186,24 @@ fn main() {
 
     if let Some(cmd) = cli.command {
         match cmd {
+            Commands::Serve { project_root } => {
+                let root = canonicalize_root(&project_root);
+                let server = mcp::AgalServer::new(root);
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .expect("tokio runtime")
+                    .block_on(async {
+                        let transport = rmcp::transport::io::stdio();
+                        rmcp::ServiceExt::serve(server, transport)
+                            .await
+                            .expect("MCP server error")
+                            .waiting()
+                            .await
+                            .expect("MCP server join");
+                    });
+                return;
+            }
             Commands::Skills { action } => match action {
                 SkillsCmd::List => {
                     agal_core::skills::print_list();

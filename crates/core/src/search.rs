@@ -1,42 +1,51 @@
-//! Keyword search over agal notes and synced skills.
+//! Full-text search over agal notes and synced skills via Tantivy (BM25).
 //!
-//! Walks `<output_dir>/notes/` and `<output_dir>/skills/` in the workspace,
-//! matches lines case-insensitively, and returns a ranked markdown report.
-//! No index needed — walkdir over ~50 files is instant.
+//! Builds an in-RAM index per call — fast enough for ~200 markdown files
+//! and avoids stale-index problems entirely.
+//! ponytail: in-RAM rebuild, switch to persistent index when files > ~2k
 
 use std::fmt::Write as _;
 use std::path::Path;
+
+use tantivy::collector::TopDocs;
+use tantivy::query::QueryParser;
+use tantivy::schema::{Schema, STORED, TEXT, Value};
+use tantivy::{Index, SnippetGenerator, TantivyDocument, doc};
 use walkdir::WalkDir;
 
-/// One matching file with its relevant lines.
-struct FileMatch {
-    /// Relative path from workspace root.
-    rel_path: String,
-    /// (line_number, line_content) for each matching line.
-    hits: Vec<(usize, String)>,
-}
-
-/// Search `<workspace>/<output_dir>/{notes,skills}` for `query` keywords.
+/// Search `<workspace>/<output_dir>/{notes,skills}` using BM25 full-text search.
 ///
-/// Returns a markdown report with file matches ranked by hit count.
-/// Returns an empty report if no files match or output_dir does not exist.
-pub fn search(workspace: &Path, output_dir: &str, query: &str, max_results: usize) -> String {
-    let terms: Vec<String> = query
-        .split_whitespace()
-        .map(|t| t.to_ascii_lowercase())
-        .filter(|t| !t.is_empty())
-        .collect();
-
-    if terms.is_empty() {
+/// Returns a markdown report ranked by relevance. Falls back to "no matches"
+/// if the index build or query parsing fails.
+pub fn search(workspace: &Path, output_dir: &str, query_str: &str, max_results: usize) -> String {
+    if query_str.trim().is_empty() {
         return "error: empty query\n".to_string();
     }
 
+    match search_inner(workspace, output_dir, query_str, max_results) {
+        Ok(out) => out,
+        Err(e) => format!("error: search failed: {e}\n"),
+    }
+}
+
+fn search_inner(
+    workspace: &Path,
+    output_dir: &str,
+    query_str: &str,
+    max_results: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    // Schema: path (display) + body (searchable + stored for snippets).
+    let mut sb = Schema::builder();
+    let f_path = sb.add_text_field("path", STORED);
+    let f_body = sb.add_text_field("body", TEXT | STORED);
+    let schema = sb.build();
+
+    let index = Index::create_in_ram(schema);
+    let mut writer = index.writer(16_000_000)?;
+
     let agal_dir = workspace.join(output_dir);
-    let search_dirs = [agal_dir.join("notes"), agal_dir.join("skills")];
-
-    let mut matches: Vec<FileMatch> = Vec::new();
-
-    for dir in &search_dirs {
+    let mut file_count = 0usize;
+    for dir in &[agal_dir.join("notes"), agal_dir.join("skills")] {
         if !dir.exists() {
             continue;
         }
@@ -54,63 +63,72 @@ pub fn search(workspace: &Path, output_dir: &str, query: &str, max_results: usiz
             })
         {
             let path = entry.path();
-            let content = match std::fs::read_to_string(path) {
-                Ok(c) => c,
-                Err(_) => continue,
+            let Ok(content) = std::fs::read_to_string(path) else {
+                continue;
             };
-
-            let mut hits: Vec<(usize, String)> = Vec::new();
-            for (idx, line) in content.lines().enumerate() {
-                let lower = line.to_ascii_lowercase();
-                if terms.iter().all(|t| lower.contains(t.as_str())) {
-                    hits.push((idx + 1, line.to_string()));
-                }
-            }
-
-            if !hits.is_empty() {
-                let rel = path
-                    .strip_prefix(workspace)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                matches.push(FileMatch {
-                    rel_path: rel,
-                    hits,
-                });
-            }
+            let rel = path
+                .strip_prefix(workspace)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            writer.add_document(doc!(f_path => rel, f_body => content))?;
+            file_count += 1;
         }
     }
+    writer.commit()?;
 
-    // Rank by hit count (most matches first).
-    matches.sort_by_key(|a| std::cmp::Reverse(a.hits.len()));
-    matches.truncate(max_results);
-
-    if matches.is_empty() {
-        return format!(
-            "# agal search: `{}`\n\nno matches in `{}/notes/` or `{}/skills/`\n",
-            query, output_dir, output_dir
-        );
+    if file_count == 0 {
+        return Ok(format!(
+            "# agal search: `{query_str}`\n\nno files in `{output_dir}/notes/` or `{output_dir}/skills/`\n"
+        ));
     }
+
+    let reader = index.reader()?;
+    let searcher = reader.searcher();
+
+    let mut qp = QueryParser::for_index(&index, vec![f_body]);
+    qp.set_conjunction_by_default(); // all terms must match, like the old behaviour
+    let query = match qp.parse_query(query_str) {
+        Ok(q) => q,
+        Err(_) => {
+            return Ok(format!(
+                "# agal search: `{query_str}`\n\ncould not parse query — try simpler terms\n"
+            ));
+        }
+    };
+
+    let top_docs = searcher.search(&query, &TopDocs::with_limit(max_results))?;
+
+    if top_docs.is_empty() {
+        return Ok(format!(
+            "# agal search: `{query_str}`\n\nno matches in `{output_dir}/notes/` or `{output_dir}/skills/`\n"
+        ));
+    }
+
+    let snippet_gen = SnippetGenerator::create(&searcher, &query, f_body)?;
 
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "# agal search: `{}`\n{} file(s) matched\n",
-        query,
-        matches.len()
+        "# agal search: `{}`\n{} result(s)\n",
+        query_str,
+        top_docs.len()
     );
 
-    for m in &matches {
-        let _ = writeln!(out, "## `{}`  ({} hit(s))\n", m.rel_path, m.hits.len());
-        for (lineno, text) in &m.hits {
-            let trimmed = text.trim();
-            if trimmed.is_empty() || trimmed.starts_with("---") {
-                continue;
-            }
-            let _ = writeln!(out, "- **L{}:** {}", lineno, trimmed);
+    for (_score, doc_addr) in &top_docs {
+        let doc: TantivyDocument = searcher.doc(*doc_addr)?;
+        let path = doc
+            .get_first(f_path)
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let snippet = snippet_gen.snippet_from_doc(&doc);
+        let fragment = snippet.fragment().trim();
+
+        let _ = writeln!(out, "## `{path}`\n");
+        if !fragment.is_empty() {
+            let _ = writeln!(out, "> {}\n", fragment.replace('\n', " "));
         }
-        let _ = writeln!(out);
     }
 
-    out
+    Ok(out)
 }
