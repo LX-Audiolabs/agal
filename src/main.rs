@@ -104,6 +104,17 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: std::path::PathBuf,
     },
+    /// Pre-flight gate: scan workspace and exit non-zero on error/warn findings
+    Check {
+        /// Exit non-zero on warnings too (default: only errors)
+        #[arg(long)]
+        strict: bool,
+        /// Output dir under project root (default: agal)
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
     /// Manage architecture proposals (pending decisions, lessons, constraints)
     Proposal {
         #[command(subcommand)]
@@ -276,6 +287,58 @@ fn main() {
 
     if let Some(cmd) = cli.command {
         match cmd {
+            Commands::Check { strict, output, project_root } => {
+                let root = canonicalize_root(&project_root);
+                let output_dir = output.unwrap_or_else(|| {
+                    agal_core::config::ProjectConfig::load(&root)
+                        .output_dir
+                        .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                });
+                match agal_core::scan(&root, false) {
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(2);
+                    }
+                    Ok(graph) => {
+                        use agal_core::findings::Severity;
+                        let errors: Vec<_> = graph.findings.iter()
+                            .filter(|f| f.severity == Severity::Error)
+                            .collect();
+                        let warns: Vec<_> = graph.findings.iter()
+                            .filter(|f| f.severity == Severity::Warn)
+                            .collect();
+                        let pending = agal_core::proposals::load(&root, &output_dir)
+                            .into_iter()
+                            .filter(|p| p.status == agal_core::proposals::ProposalStatus::Pending)
+                            .count();
+
+                        for f in &errors {
+                            eprintln!("error [{}] {}: {}", f.code, f.node.as_deref().unwrap_or("-"), f.message);
+                        }
+                        for f in &warns {
+                            eprintln!("warn  [{}] {}: {}", f.code, f.node.as_deref().unwrap_or("-"), f.message);
+                        }
+                        if pending > 0 {
+                            eprintln!("note: {} pending proposal(s) — review with `agal proposal list`", pending);
+                        }
+
+                        let fail = !errors.is_empty() || (strict && !warns.is_empty());
+                        if fail {
+                            eprintln!(
+                                "\nagal check failed: {} error(s), {} warn(s)",
+                                errors.len(), warns.len()
+                            );
+                            std::process::exit(1);
+                        } else {
+                            println!(
+                                "agal check ok: {} node(s), {} warn(s)",
+                                graph.nodes.len(), warns.len()
+                            );
+                        }
+                    }
+                }
+                return;
+            }
             Commands::Proposal { action } => {
                 let (project_root, output_override) = match &action {
                     ProposalCmd::List { project_root, output, .. } => (project_root.clone(), output.clone()),

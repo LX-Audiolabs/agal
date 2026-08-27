@@ -848,6 +848,44 @@ pub fn analyze(
         }
     }
 
+    // RT safety: allocating patterns detected inside plugin process() hooks.
+    for node in nodes {
+        let Some(ast) = node.ast_summary.as_ref() else {
+            continue;
+        };
+        if ast.rt_alloc_in_process.is_empty() || ast.process_hooks.is_empty() {
+            continue;
+        }
+        let sample: Vec<&str> = ast
+            .rt_alloc_in_process
+            .iter()
+            .take(5)
+            .map(String::as_str)
+            .collect();
+        let more = if ast.rt_alloc_in_process.len() > 5 {
+            format!(" (+{} more)", ast.rt_alloc_in_process.len() - 5)
+        } else {
+            String::new()
+        };
+        out.push(
+            Finding::new(
+                Severity::Error,
+                "rt_alloc_in_process",
+                format!(
+                    "{} allocates in process() hook: {}{} — audio thread must never heap-alloc",
+                    node.name,
+                    sample.join(", "),
+                    more
+                ),
+            )
+            .at_node(node)
+            .with_fix(format!(
+                "preallocate in activate/prepare(); use fixed-size buffers and lock-free structures in `{}/src/`",
+                node.path
+            )),
+        );
+    }
+
     // User-declared [[rule_lints]] from agal.toml: import-pattern enforcement.
     for lint in rule_lints {
         let sev = match lint.severity.as_str() {

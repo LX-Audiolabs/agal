@@ -5,8 +5,8 @@ use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
-    Fields, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemMacro, ItemStruct, ItemTrait, ItemUse,
-    Visibility,
+    Expr, ExprCall, ExprMethodCall, Fields, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemMacro,
+    ItemStruct, ItemTrait, ItemUse, Macro, Visibility,
 };
 
 /// One parameter field on a Params struct.
@@ -101,6 +101,9 @@ pub struct AstSummary {
     /// Detected plugin export formats: clap, vst3, lv2, etc.
     #[serde(skip_serializing_if = "BTreeSet::is_empty", default)]
     pub plugin_formats: BTreeSet<String>,
+    /// Allocating patterns found inside plugin process() hooks (RT safety violations).
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub rt_alloc_in_process: Vec<String>,
 }
 
 impl AstSummary {
@@ -350,6 +353,7 @@ fn analyze_file(
         include_symbols: opts.include_symbols,
         in_plugin_logic_impl: false,
         in_plugin_impl: false,
+        in_process_body: false,
     };
     visitor.visit_file(&file);
 }
@@ -360,6 +364,8 @@ struct AudioPluginVisitor<'a> {
     include_symbols: bool,
     in_plugin_logic_impl: bool,
     in_plugin_impl: bool,
+    /// True while visiting the body of a plugin process() hook (RT safety scope).
+    in_process_body: bool,
 }
 
 impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
@@ -444,26 +450,33 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
         if is_pub {
             self.record_api("fn", &fn_name, signature_for_fn(&node.sig), item_line(node));
         }
-        match fn_name.as_str() {
+        let is_process = match fn_name.as_str() {
             "process" => {
                 self.summary.process_functions.insert(fn_name.clone());
                 self.summary
                     .process_hooks
                     .insert(format!("fn process @ {}", self.current_file));
                 self.record_symbol("fn process");
+                true
             }
             "editor" => {
                 self.summary.editor_functions.insert(fn_name.clone());
                 self.record_symbol("fn editor");
+                false
             }
-            _ => {}
+            _ => false,
+        };
+        let prev = self.in_process_body;
+        if is_process {
+            self.in_process_body = true;
         }
         syn::visit::visit_item_fn(self, node);
+        self.in_process_body = prev;
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
         let fn_name = node.sig.ident.to_string();
-        match fn_name.as_str() {
+        let is_rt_process = match fn_name.as_str() {
             "process" => {
                 self.summary.process_method_count += 1;
                 if self.in_plugin_logic_impl || self.in_plugin_impl {
@@ -472,17 +485,58 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
                         .process_hooks
                         .insert(format!("PluginLogic::process @ {}", self.current_file));
                     self.record_symbol("fn process (plugin hook)");
+                    true
+                } else {
+                    false
                 }
-                // Do not spam symbols for every DSP process method.
             }
             "editor" if self.in_plugin_logic_impl || self.in_plugin_impl => {
                 self.summary.editor_functions.insert(fn_name.clone());
                 self.record_symbol("fn editor (plugin hook)");
+                false
             }
-            "editor" => {}
-            _ => {}
+            "editor" => false,
+            _ => false,
+        };
+        let prev = self.in_process_body;
+        if is_rt_process {
+            self.in_process_body = true;
         }
         syn::visit::visit_impl_item_fn(self, node);
+        self.in_process_body = prev;
+    }
+
+    fn visit_expr_call(&mut self, node: &'ast ExprCall) {
+        if self.in_process_body {
+            if let Some(pat) = detect_rt_alloc_call(node) {
+                if !self.summary.rt_alloc_in_process.contains(&pat) {
+                    self.summary.rt_alloc_in_process.push(pat);
+                }
+            }
+        }
+        syn::visit::visit_expr_call(self, node);
+    }
+
+    fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
+        if self.in_process_body {
+            if let Some(pat) = detect_rt_alloc_method(node) {
+                if !self.summary.rt_alloc_in_process.contains(&pat) {
+                    self.summary.rt_alloc_in_process.push(pat);
+                }
+            }
+        }
+        syn::visit::visit_expr_method_call(self, node);
+    }
+
+    fn visit_macro(&mut self, node: &'ast Macro) {
+        if self.in_process_body {
+            if let Some(pat) = detect_rt_alloc_macro(node) {
+                if !self.summary.rt_alloc_in_process.contains(&pat) {
+                    self.summary.rt_alloc_in_process.push(pat);
+                }
+            }
+        }
+        syn::visit::visit_macro(self, node);
     }
 
     fn visit_item_struct(&mut self, node: &'ast ItemStruct) {
@@ -1081,6 +1135,58 @@ fn use_tree_to_string(tree: &syn::UseTree) -> String {
             .map(use_tree_to_string)
             .collect::<Vec<_>>()
             .join(","),
+    }
+}
+
+/// Known allocating call patterns (Type::fn or bare fn names).
+const RT_ALLOC_CALLS: &[&str] = &[
+    "Vec::new",
+    "Vec::with_capacity",
+    "Box::new",
+    "Arc::new",
+    "Rc::new",
+    "String::new",
+    "String::from",
+    "String::with_capacity",
+    "HashMap::new",
+    "BTreeMap::new",
+    "Mutex::new",
+    "RwLock::new",
+];
+
+fn detect_rt_alloc_call(node: &ExprCall) -> Option<String> {
+    let Expr::Path(path_expr) = &*node.func else {
+        return None;
+    };
+    let sig: String = path_expr
+        .path
+        .segments
+        .iter()
+        .map(|s| s.ident.to_string())
+        .collect::<Vec<_>>()
+        .join("::");
+    RT_ALLOC_CALLS
+        .iter()
+        .find(|&&pat| sig == pat || sig.ends_with(&format!("::{pat}")))
+        .map(|&pat| pat.to_string())
+}
+
+fn detect_rt_alloc_method(node: &ExprMethodCall) -> Option<String> {
+    let method = node.method.to_string();
+    match method.as_str() {
+        // Definitely allocating or blocking
+        "to_string" | "to_owned" | "collect" | "lock" => Some(format!(".{}()", method)),
+        _ => None,
+    }
+}
+
+fn detect_rt_alloc_macro(node: &Macro) -> Option<String> {
+    let name = node.path.segments.last()?.ident.to_string();
+    match name.as_str() {
+        "format" | "vec" | "println" | "eprintln" | "print" | "eprint" => {
+            Some(format!("{}!", name))
+        }
+        _ => None,
     }
 }
 

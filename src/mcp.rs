@@ -151,6 +151,36 @@ impl AgalServer {
         agal_core::findings_report(&self.workspace, &self.output_dir, &type_list)
     }
 
+    #[tool(description = "Pre-flight workspace check. Returns error/warn findings + pending proposal count. Call before editing process() code or making architectural changes.")]
+    fn check(&self) -> String {
+        use agal_core::findings::Severity;
+        let graph = match agal_core::scan(&self.workspace, false) {
+            Ok(g) => g,
+            Err(e) => return format!("check failed to scan: {e}"),
+        };
+        let errors: Vec<_> = graph.findings.iter().filter(|f| f.severity == Severity::Error).collect();
+        let warns: Vec<_> = graph.findings.iter().filter(|f| f.severity == Severity::Warn).collect();
+        let pending = agal_core::proposals::load(&self.workspace, &self.output_dir)
+            .into_iter()
+            .filter(|p| p.status == agal_core::proposals::ProposalStatus::Pending)
+            .count();
+
+        if errors.is_empty() && warns.is_empty() {
+            let note = if pending > 0 { format!(" ({pending} pending proposals)") } else { String::new() };
+            return format!("agal check ok: {} nodes{note}", graph.nodes.len());
+        }
+        let mut out = format!("agal check: {} error(s), {} warn(s)", errors.len(), warns.len());
+        if pending > 0 { out.push_str(&format!(", {pending} pending proposal(s)")); }
+        out.push('\n');
+        for f in errors.iter().chain(warns.iter()) {
+            let sev = &f.severity;
+            let node = f.node.as_deref().unwrap_or("-");
+            out.push_str(&format!("{sev} [{code}] {node}: {msg}\n", code = f.code, msg = f.message));
+            if let Some(fix) = &f.fix { out.push_str(&format!("  fix: {fix}\n")); }
+        }
+        out
+    }
+
     #[tool(description = "Create a pending proposal (decision/lesson/constraint/task). Returns the proposal ID for use with approve/reject.")]
     fn propose(
         &self,
