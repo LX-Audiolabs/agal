@@ -380,7 +380,7 @@ fn main() {
                 });
                 match action {
                     ProposalCmd::List { status, .. } => {
-                        let filter = status.as_deref().and_then(|s| if s == "all" { None } else { Some(s) });
+                        let filter = status.as_deref().filter(|&s| s != "all");
                         print!("{}", agal_core::proposal_list(&root, &output_dir, filter));
                     }
                     ProposalCmd::Show { id, .. } => {

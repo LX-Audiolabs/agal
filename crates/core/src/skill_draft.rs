@@ -18,7 +18,7 @@ pub fn draft(
             n.id == node_name
                 || n.name == node_name
                 || n.id.ends_with(node_name)
-                || n.name.to_ascii_lowercase() == node_name.to_ascii_lowercase()
+                || n.name.eq_ignore_ascii_case(node_name)
         })
         .ok_or_else(|| {
             let names: Vec<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
@@ -64,7 +64,7 @@ pub fn render_draft(workspace: &Path, node_name: &str) -> Result<String, String>
             n.id == node_name
                 || n.name == node_name
                 || n.id.ends_with(node_name)
-                || n.name.to_ascii_lowercase() == node_name.to_ascii_lowercase()
+                || n.name.eq_ignore_ascii_case(node_name)
         })
         .ok_or_else(|| {
             let names: Vec<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
