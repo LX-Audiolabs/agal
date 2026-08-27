@@ -39,6 +39,12 @@ cd /path/to/Agentic\ Audiolab
 cargo install --path . --force   # installs `agal` on PATH
 ```
 
+On Windows, `cargo install` fails with **Zugriff verweigert** while the TUI has `agal serve` mapped. Do **not** `taskkill` — the host respawns a new PID on the same path. Rename the running image, then copy:
+
+```powershell
+powershell -File scripts/install-windows.ps1
+```
+
 ## Usage
 
 ```bash

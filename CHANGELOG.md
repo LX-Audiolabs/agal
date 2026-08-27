@@ -6,6 +6,26 @@ Recent entries appear at the top.
 
 All notable changes to `agentic-audiolab` / `agal`.
 
+## [Unreleased]
+
+## [0.9.1] — 2026-08-27
+
+### Added
+- **MCP `nodes` / `impact` / `coverage` / `skill`** — `agal serve` exposes the CLI query path. `context` without `focus` returns the node list. MCP `context` defaults to explain-mode (trigger table). `skill` loads one synced file by stem/`id`. CLI: `agal nodes`, `agal skill <id>`; `agal context` without `--focus` prints the node list.
+- **`rust-workflow` policy skill** — embedded Rust CI discipline: `cargo fmt` + `cargo clippy` when-to-run table, common allow patterns, fix order (fmt → check → clippy → test). Available via `agal skills sync --only policy`.
+- **`agal coverage`** — per-node gap map: note presence, atom count, matched skill count for every workspace node.
+- **Knowledge panel in HTML** — floating card of non-`fact` `[ATOM]` entries, grouped by type.
+- **`agal atom add --note <stem>`** — write atom to a crate note; falls back to `_workspace.md` with a warning if the named note is missing.
+- **Knowledge atoms in `agal context`** — focus-note atoms plus up to 10 recent `lesson`/`failure` atoms from `_workspace.md`.
+
+### Changed
+- **Skill matching** — query terms are the full node name plus hyphen suffixes (`aura-dsp` → `dsp`), not a substring of the family prefix. Context packs no longer always-attach `01-policy/`. Markdown inline is capped at 2 skills.
+- **MCP `atom_add`** — `note` required (crate stem or `_workspace`). Omitting it writes nothing.
+
+### Fixed
+- **Unknown node / skill over MCP** — lookup misses return a normal tool result with candidates, not JSON-RPC `-32603`.
+- **Template placeholder atoms filtered** — seed `[ATOM] type=decision|lesson|constraint | detail=…` lines no longer appear in findings / context / HTML.
+
 ## [0.9.0] — 2026-08-26
 
 ### Added
@@ -13,19 +33,6 @@ All notable changes to `agentic-audiolab` / `agal`.
 - **`agal context --explain`** — replaces full skill content with a compact trigger-reason table showing which query terms fired each skill match. Useful for debugging context packs without token bloat.
 - **Tantivy full-text search** — `agal search` now uses BM25 ranking and in-RAM Tantivy index instead of linear walkdir scan. Multi-term AND logic preserved; adds relevance ranking and snippet extraction.
 - **Token estimate in context packs** — every markdown context pack footer now shows `estimated tokens: ~N` based on output length.
-
-## [Unreleased]
-
-### Added
-- **`rust-workflow` policy skill** — embedded Rust CI discipline: `cargo fmt` + `cargo clippy` when-to-run table, common allow patterns, fix order (fmt → check → clippy → test). Available via `agal skills sync --only policy`.
-- **Policy skills auto-attach in `agal context`** — all `01-policy/` skills from the workspace always appear in context packs, regardless of node-specific trigger matching. Agents always see workflow + code-style policy.
-- **`agal coverage`** — per-node gap map: note presence, atom count, matched skill count for every workspace node. Sorts by kind (plugin→crate→member); flags nodes with no note or no skills.
-- **Knowledge panel in HTML** — floating card (bottom-center) showing all non-`fact` `[ATOM]` entries from notes, grouped by type (failure, lesson, decision, constraint) with color-coded badges. Collapses by default; hidden on mobile.
-- **`agal atom add --note <stem>`** — write atom to a specific crate note (`notes/aura-dsp.md`) instead of `_workspace.md`. Falls back to `_workspace.md` with a warning if the named note doesn't exist yet.
-- **Knowledge atoms in `agal context`** — context packs now include a `## knowledge atoms` section: all non-fact atoms from the focus node's note, plus up to 10 most recent `lesson`/`failure` atoms from `_workspace.md`. AI agents see code + distilled experience in one pack.
-
-### Fixed
-- **Template placeholder atoms filtered** — `[ATOM] type=decision|lesson|constraint | detail=…` seed lines (written into every new note) no longer appear in `agal findings`, `agal context`, or the Knowledge HTML panel.
 
 ## [0.8.0] — 2026-08-25
 

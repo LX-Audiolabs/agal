@@ -1385,11 +1385,36 @@ fn resolve_node<'g>(graph: &'g Audiolabs, name: &str) -> Option<&'g Node> {
         .find(|n| n.name == name || n.id == name || n.id.ends_with(&format!("/{}", name)))
 }
 
+fn unknown_node_message(graph: &Audiolabs, name: &str) -> String {
+    let needle = name.to_ascii_lowercase();
+    let mut hints: Vec<&str> = graph
+        .nodes
+        .iter()
+        .filter(|n| {
+            let hay = n.name.to_ascii_lowercase();
+            hay.contains(&needle) || needle.contains(&hay)
+        })
+        .map(|n| n.name.as_str())
+        .collect();
+    if hints.is_empty() {
+        hints = graph.nodes.iter().map(|n| n.name.as_str()).take(12).collect();
+    }
+    hints.sort();
+    hints.truncate(12);
+    format!(
+        "node '{name}' not found in workspace. Candidates: {}",
+        hints.join(", ")
+    )
+}
+
+fn resolve_node_err<'g>(graph: &'g Audiolabs, name: &str) -> Result<&'g Node, String> {
+    resolve_node(graph, name).ok_or_else(|| unknown_node_message(graph, name))
+}
+
 /// Reverse-dependency report: who depends on / uses the given node.
 pub fn impact_report(project_root: &Path, name: &str) -> Result<String, String> {
     let graph = scan(project_root, false)?;
-    let node = resolve_node(&graph, name)
-        .ok_or_else(|| format!("node '{}' not found in workspace", name))?;
+    let node = resolve_node_err(&graph, name)?;
     let id = &node.id;
 
     let inbound: Vec<&Edge> = graph.edges.iter().filter(|e| e.to == *id).collect();
@@ -1527,8 +1552,7 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
         .or_else(|| changed_nodes.first().map(|n| n.name.clone()))
         .ok_or_else(|| "context requires --focus or a diff with changed files".to_string())?;
 
-    let node = resolve_node(&graph, &focus_name)
-        .ok_or_else(|| format!("node '{}' not found in workspace", focus_name))?;
+    let node = resolve_node_err(&graph, &focus_name)?;
     let id = &node.id;
 
     let related_edges: Vec<&Edge> = graph
@@ -1554,52 +1578,9 @@ pub fn context_pack(project_root: &Path, opts: &ContextPackOptions) -> Result<St
 
     let changed_node_names: Vec<&str> = changed_nodes.iter().map(|n| n.name.as_str()).collect();
 
-    // Build query terms for skill matching: node name parts + frameworks.
-    // Exclude node.kind ("crate", "plugin") — too generic, causes false-positive matches.
-    let mut skill_terms: Vec<String> = node
-        .name
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect();
-    for fw in &node.frameworks {
-        skill_terms.push(fw.clone());
-    }
+    let skill_terms = atoms::query_terms_for_node(&node.name, &node.frameworks);
     let skill_term_refs: Vec<&str> = skill_terms.iter().map(String::as_str).collect();
-    let mut matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
-    // Policy skills (01-policy/) always attach — they are workspace-wide discipline, not node-specific.
-    let policy_dir = project_root
-        .join(&output_dir)
-        .join("skills")
-        .join("01-policy");
-    if policy_dir.exists() {
-        for entry in walkdir::WalkDir::new(&policy_dir)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_type().is_file()
-                    && e.path().extension().and_then(|s| s.to_str()) == Some("md")
-            })
-        {
-            let rel = entry
-                .path()
-                .strip_prefix(project_root)
-                .unwrap_or(entry.path())
-                .to_string_lossy()
-                .replace('\\', "/");
-            if matched_skills.iter().any(|s| s.rel_path == rel) {
-                continue; // already matched
-            }
-            if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                matched_skills.push(atoms::SkillMatch {
-                    rel_path: rel,
-                    content,
-                    matched_triggers: vec!["policy".to_string()],
-                });
-            }
-        }
-    }
+    let matched_skills = atoms::match_skills(project_root, &output_dir, &skill_term_refs);
 
     // Load ATOMs for context:
     // - node-specific note: all non-fact atoms
@@ -1861,29 +1842,35 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
             let _ = writeln!(s, "| skill | triggers fired | source |");
             let _ = writeln!(s, "|-------|---------------|--------|");
             for sk in matched_skills {
-                let source = if sk.matched_triggers == ["policy"] {
-                    "always-attach (01-policy/)".to_string()
-                } else {
-                    format!(
-                        "node terms: {}",
-                        sk.matched_triggers
-                            .iter()
-                            .map(|t| format!("`{t}`"))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                };
                 let _ = writeln!(
                     s,
-                    "| `{}` | {} | {} |",
+                    "| `{}` | {} | node terms: {} |",
                     sk.rel_path,
                     sk.matched_triggers.join(", "),
-                    source
+                    sk.matched_triggers
+                        .iter()
+                        .map(|t| format!("`{t}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
-            let _ = writeln!(s);
+            let _ = writeln!(
+                s,
+                "\nLoad one skill in full via MCP `skill` (stem or `id`, e.g. `clap`, `dsp-realtime`).\n"
+            );
         } else {
-            for sk in matched_skills {
+            const MAX_INLINE: usize = 2;
+            let mut ranked: Vec<&atoms::SkillMatch> = matched_skills.iter().collect();
+            ranked.sort_by_key(|sk| skill_inline_rank(&sk.rel_path));
+            let inline = ranked.len().min(MAX_INLINE);
+            if ranked.len() > MAX_INLINE {
+                let _ = writeln!(
+                    s,
+                    "_inlined {inline} of {} skills (framework/format first). Rest: MCP `skill` or `--explain`._\n",
+                    ranked.len()
+                );
+            }
+            for sk in ranked.iter().take(inline) {
                 let _ = writeln!(
                     s,
                     "### `{}` (triggers: {})\n",
@@ -1912,6 +1899,56 @@ fn render_context_markdown(data: ContextPackRenderData<'_>) -> String {
 
 fn short_id(id: &str) -> &str {
     id.rsplit('/').next().unwrap_or(id)
+}
+
+fn skill_inline_rank(rel_path: &str) -> u8 {
+    if rel_path.contains("02-frameworks") {
+        0
+    } else if rel_path.contains("03-formats") {
+        1
+    } else if rel_path.contains("00-core") {
+        2
+    } else if rel_path.contains("04-ui") {
+        3
+    } else {
+        9
+    }
+}
+
+/// Workspace node list + health — MCP entry when `context` has no focus.
+pub fn nodes_report(project_root: &Path) -> Result<String, String> {
+    let graph = scan(project_root, false)?;
+    let health = findings::health(&graph.findings);
+    let mut s = String::new();
+    let _ = writeln!(s, "# agal nodes — {}", graph.project_name);
+    let _ = writeln!(
+        s,
+        "health: **{}** · nodes: {} · edges: {} · findings: {} (error/warn in agent map)\n",
+        health.as_str(),
+        graph.nodes.len(),
+        graph.edges.len(),
+        graph.findings.len()
+    );
+    let _ = writeln!(s, "| name | kind | path |");
+    let _ = writeln!(s, "|------|------|------|");
+    let mut nodes = graph.nodes.clone();
+    nodes.sort_by(|a, b| a.kind.cmp(&b.kind).then(a.name.cmp(&b.name)));
+    for n in &nodes {
+        let _ = writeln!(s, "| `{}` | {} | `{}` |", n.name, n.kind, n.path);
+    }
+    let _ = writeln!(
+        s,
+        "\nNext: `context` with `focus` = a name above, or `impact` / `coverage` / `search`."
+    );
+    Ok(s)
+}
+
+/// Load one synced skill file by stem / id / unique path substring.
+pub fn skill_get(project_root: &Path, query: &str) -> Result<String, String> {
+    let output_dir = config::ProjectConfig::load(project_root)
+        .output_dir
+        .unwrap_or_else(|| DEFAULT_OUTPUT_DIR.to_string());
+    atoms::skill_by_query(project_root, &output_dir, query)
 }
 
 /// Keyword search over workspace agal notes and synced skills.
@@ -1956,15 +1993,7 @@ pub fn coverage_report(project_root: &Path) -> Result<String, String> {
             } else {
                 0
             };
-            let mut terms: Vec<String> = node
-                .name
-                .split(|c: char| !c.is_alphanumeric())
-                .filter(|s| !s.is_empty())
-                .map(|s| s.to_string())
-                .collect();
-            for fw in &node.frameworks {
-                terms.push(fw.clone());
-            }
+            let terms = atoms::query_terms_for_node(&node.name, &node.frameworks);
             let term_refs: Vec<&str> = terms.iter().map(String::as_str).collect();
             let skill_count = atoms::match_skills(project_root, &output_dir, &term_refs).len();
             Row {

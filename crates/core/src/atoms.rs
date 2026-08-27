@@ -248,19 +248,71 @@ pub struct SkillMatch {
     pub matched_triggers: Vec<String>,
 }
 
+/// Query terms for skill matching from a workspace node.
+///
+/// Full name + hyphen suffixes (`aura-dsp` → `dsp`), not the family prefix
+/// (`aura`). Stops `triggers: aura` from attaching the AURA skill to every
+/// `aura-*` crate. Frameworks equal to that prefix are skipped too.
+pub fn query_terms_for_node(name: &str, frameworks: &[String]) -> Vec<String> {
+    let mut terms = vec![name.to_string()];
+    let parts: Vec<&str> = name
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let family = parts.first().copied().unwrap_or("");
+    for part in parts.iter().skip(1) {
+        if part.len() >= 3 {
+            terms.push((*part).to_string());
+        }
+    }
+    // Family prefix as its own exact term (`aura`), never as a substring of
+    // `aura-core`. Lets `triggers: aura` attach the framework skill without
+    // firing on hyphenated crate names via contains().
+    if family.len() >= 3 && family != name && !terms.iter().any(|t| t == family) {
+        terms.push(family.to_string());
+    }
+    for fw in frameworks {
+        if fw != name && !terms.iter().any(|t| t == fw) {
+            terms.push(fw.clone());
+        }
+    }
+    terms
+}
+
+/// Trigger vs query-term hit.
+///
+/// Exact match always. Substring only when **neither** side contains `-`,
+/// so `aura` does not match `aura-dsp`. Long enough (≥6) to keep
+/// `biquad` → `biquadfilter` without `@aura` firing on every crate.
+pub fn trigger_hits(trigger: &str, terms: &[String]) -> bool {
+    let t = trigger.to_ascii_lowercase();
+    for term in terms {
+        let e = term.to_ascii_lowercase();
+        if e == t {
+            return true;
+        }
+        if e.contains('-') || t.contains('-') {
+            continue;
+        }
+        // Long tokens only (`biquad` ⊂ `biquadfilter`). Short family
+        // prefixes (`aura`, `clap`) must be exact so `@aura` / `AuraSlintEditor`
+        // do not fire on every AURA crate.
+        if t.len() >= 6 && e.len() >= 6 && (e.contains(&t) || t.contains(&e)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Scan `<workspace>/<output_dir>/skills/` and return skills whose `triggers:`
 /// frontmatter field overlaps with any term in `query_terms`.
-///
-/// `query_terms` = focus node name tokens + framework names + extra keywords.
-/// Matching is case-insensitive substring: trigger "biquad" matches term "biquadfilter".
 pub fn match_skills(workspace: &Path, output_dir: &str, query_terms: &[&str]) -> Vec<SkillMatch> {
     let skills_dir = workspace.join(output_dir).join("skills");
     if !skills_dir.exists() || query_terms.is_empty() {
         return Vec::new();
     }
 
-    let lower_terms: Vec<String> = query_terms.iter().map(|t| t.to_ascii_lowercase()).collect();
-
+    let terms: Vec<String> = query_terms.iter().map(|t| (*t).to_string()).collect();
     let mut matches: Vec<SkillMatch> = Vec::new();
 
     for entry in WalkDir::new(&skills_dir)
@@ -282,15 +334,9 @@ pub fn match_skills(workspace: &Path, output_dir: &str, query_terms: &[&str]) ->
             continue;
         }
 
-        // A skill matches if any trigger is a substring of any query term OR vice versa.
         let matched: Vec<String> = triggers
             .iter()
-            .filter(|trigger| {
-                let tl = trigger.to_ascii_lowercase();
-                lower_terms
-                    .iter()
-                    .any(|term| term.contains(tl.as_str()) || tl.contains(term.as_str()))
-            })
+            .filter(|trigger| trigger_hits(trigger, &terms))
             .cloned()
             .collect();
 
@@ -390,4 +436,153 @@ pub fn append_atom(
         .map_err(|e| format!("cannot write atom: {}", e))?;
 
     Ok(fallback_msg.unwrap_or_default())
+}
+
+fn parse_frontmatter_field(content: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    let mut in_front = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "---" {
+            if !in_front {
+                in_front = true;
+                continue;
+            }
+            break;
+        }
+        if !in_front {
+            continue;
+        }
+        if let Some(val) = trimmed.strip_prefix(&prefix) {
+            let v = val.trim().trim_matches('"').to_string();
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// Load one synced skill by stem, `id:` frontmatter, or unique path substring.
+pub fn skill_by_query(
+    workspace: &Path,
+    output_dir: &str,
+    query: &str,
+) -> Result<String, String> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return Err("skill query is empty".to_string());
+    }
+    let skills_dir = workspace.join(output_dir).join("skills");
+    if !skills_dir.exists() {
+        return Err("no agal/skills/ — run `agal skills sync` first".to_string());
+    }
+
+    let mut hits: Vec<(String, String)> = Vec::new();
+    for entry in WalkDir::new(&skills_dir)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file() && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+        })
+    {
+        let path = entry.path();
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let rel = path
+            .strip_prefix(workspace)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let id = parse_frontmatter_field(&content, "id")
+            .map(|s| s.to_ascii_lowercase())
+            .unwrap_or_default();
+        let rel_l = rel.to_ascii_lowercase();
+        if stem == q || id == q || rel_l.ends_with(&format!("/{q}.md")) {
+            hits.push((rel, content));
+        }
+    }
+
+    match hits.len() {
+        0 => {
+            // Unique substring fallback (e.g. "dsp-realtime").
+            let mut soft: Vec<(String, String)> = Vec::new();
+            for entry in WalkDir::new(&skills_dir)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_type().is_file()
+                        && e.path().extension().and_then(|s| s.to_str()) == Some("md")
+                })
+            {
+                let path = entry.path();
+                let Ok(content) = std::fs::read_to_string(path) else {
+                    continue;
+                };
+                let rel = path
+                    .strip_prefix(workspace)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if rel.to_ascii_lowercase().contains(&q) {
+                    soft.push((rel, content));
+                }
+            }
+            match soft.len() {
+                1 => Ok(format!("# {}\n\n{}", soft[0].0, soft[0].1.trim())),
+                0 => Err(format!(
+                    "no skill matching '{query}'. Try `id` / stem (e.g. clap, dsp-realtime, aura)."
+                )),
+                _ => Err(format!(
+                    "ambiguous skill '{query}'. Candidates: {}",
+                    soft.iter()
+                        .map(|(p, _)| p.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )),
+            }
+        }
+        1 => Ok(format!("# {}\n\n{}", hits[0].0, hits[0].1.trim())),
+        _ => Err(format!(
+            "ambiguous skill '{query}'. Candidates: {}",
+            hits.iter()
+                .map(|(p, _)| p.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn query_terms_family_is_exact_not_split() {
+        let fw = vec!["aura".to_string(), "clap".to_string()];
+        let terms = query_terms_for_node("aura-dsp", &fw);
+        assert_eq!(terms, vec!["aura-dsp", "dsp", "aura", "clap"]);
+    }
+
+    #[test]
+    fn aura_substring_does_not_hit_hyphenated_name() {
+        assert!(!trigger_hits("aura", &["aura-core".into()]));
+        assert!(trigger_hits("aura", &query_terms_for_node("aura-core", &[])));
+        assert!(trigger_hits("aura-core", &["aura-core".into()]));
+        assert!(trigger_hits("dsp", &query_terms_for_node("aura-dsp", &[])));
+        assert!(!trigger_hits("dsp", &query_terms_for_node("aura-core", &[])));
+        assert!(trigger_hits("biquad", &["biquadfilter".into()]));
+        assert!(!trigger_hits("aura", &["aura-dsp".into()]));
+        assert!(!trigger_hits("@aura", &["aura".into()]));
+        assert!(!trigger_hits("AuraSlintEditor", &["aura".into()]));
+        assert!(!trigger_hits("truce to aura", &["aura".into()]));
+    }
 }

@@ -131,12 +131,16 @@ Without `--force`, existing skill files are **skipped** (local edits kept).
 
 | Command | What it does |
 |---------|----------------|
+| `agal nodes` | workspace node names + health (valid `--focus` values) |
+| `agal skill <id>` | one synced skill file (stem or frontmatter `id`) |
 | `agal impact <name>` | reverse dependencies — who uses this crate/plugin |
 | `agal context --focus <name> --budget 4000` | token-capped Markdown pack (focus + 1-hop + findings) |
 | `agal context --focus <name> --budget 4000 --format json` | same pack as JSON |
 | `agal context --diff HEAD~1 --budget 4000` | pack centered on files changed since ref |
+| `agal coverage` | note / atom / skill gaps per node |
+| `agal serve` | MCP stdio: `nodes`, `context`, `impact`, `coverage`, `skill`, `search`, `findings`, `atom_add` |
 
-Use these when you need a quick blast-radius or a focused context bundle without opening the full graph.
+Use these when you need a quick blast-radius or a focused context bundle without opening the full graph. MCP `context` defaults to `--explain` (trigger table); load one skill with `skill`.
 
 ### Doctor (external tools — not executed by generate)
 

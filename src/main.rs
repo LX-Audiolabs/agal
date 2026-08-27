@@ -48,6 +48,18 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// List workspace nodes + health (valid `context --focus` names)
+    Nodes {
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Load one synced skill by stem or frontmatter id
+    Skill {
+        /// Skill stem or id (e.g. clap, dsp-realtime, aura)
+        query: String,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
     /// Reverse-dependency impact report for a crate/plugin
     Impact {
         /// Crate or plugin name (matches name, id, or suffix)
@@ -280,6 +292,32 @@ fn main() {
                     }
                 }
             }
+            Commands::Nodes { project_root } => {
+                let root = canonicalize_root(&project_root);
+                match agal_core::nodes_report(&root) {
+                    Ok(report) => {
+                        print!("{report}");
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Commands::Skill { query, project_root } => {
+                let root = canonicalize_root(&project_root);
+                match agal_core::skill_get(&root, &query) {
+                    Ok(report) => {
+                        print!("{report}");
+                        return;
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             Commands::Impact { name, project_root } => {
                 let root = canonicalize_root(&project_root);
                 match agal_core::impact_report(&root, &name) {
@@ -384,8 +422,16 @@ fn main() {
             } => {
                 let root = canonicalize_root(&project_root);
                 if focus.is_none() && diff.is_none() {
-                    eprintln!("error: context requires --focus or --diff");
-                    std::process::exit(1);
+                    match agal_core::nodes_report(&root) {
+                        Ok(report) => {
+                            print!("{report}");
+                            return;
+                        }
+                        Err(e) => {
+                            eprintln!("error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
                 }
                 let fmt = match agal_core::ContextPackFormat::parse(&format) {
                     Ok(f) => f,
