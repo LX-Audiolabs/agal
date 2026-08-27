@@ -131,6 +131,18 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: PathBuf,
     },
+    /// Show DAW/host compatibility matrix (formats, notes dialect, sidechain, quirks)
+    HostMatrix {
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Show the process() I/O signal map for one plugin/crate node
+    ProcessMap {
+        /// Crate or plugin name (e.g. smoke-synth, aura-clap)
+        node: String,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
     /// Start an MCP server over stdio (for Claude Code / AI tool integration)
     Serve {
         #[arg(default_value = ".")]
@@ -162,6 +174,19 @@ enum Commands {
 enum SkillsCmd {
     /// List embedded skills and groups
     List,
+    /// Draft a workspace skill file for one node (AST + notes → template)
+    Draft {
+        /// Crate or plugin name (e.g. smoke-synth, aura-dsp)
+        node: String,
+        /// Overwrite existing skill file
+        #[arg(long)]
+        force: bool,
+        /// Output dir under project root (default: agal)
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
     /// Copy selected groups/skills into <workspace>/<output>/skills/
     Sync {
         /// Comma list: groups (`policy`, `ui`), singles (`ui/slint`), presets (`slint-ui`); default `core`
@@ -398,6 +423,19 @@ fn main() {
                 }
                 return;
             }
+            Commands::HostMatrix { project_root } => {
+                let root = canonicalize_root(&project_root);
+                print!("{}", agal_core::host_matrix_report(&root));
+                return;
+            }
+            Commands::ProcessMap { node, project_root } => {
+                let root = canonicalize_root(&project_root);
+                match agal_core::process_map_report(&root, &node) {
+                    Ok(r) => print!("{r}"),
+                    Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                }
+                return;
+            }
             Commands::Serve { project_root } => {
                 let root = canonicalize_root(&project_root);
                 let server = mcp::AgalServer::new(root);
@@ -419,6 +457,19 @@ fn main() {
             Commands::Skills { action } => match action {
                 SkillsCmd::List => {
                     agal_core::skills::print_list();
+                    return;
+                }
+                SkillsCmd::Draft { node, force, output, project_root } => {
+                    let root = canonicalize_root(&project_root);
+                    let output_dir = output.unwrap_or_else(|| {
+                        agal_core::config::ProjectConfig::load(&root)
+                            .output_dir
+                            .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                    });
+                    match agal_core::skill_draft_write(&root, &output_dir, &node, force) {
+                        Ok(r) => println!("{r}"),
+                        Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                    }
                     return;
                 }
                 SkillsCmd::Sync {

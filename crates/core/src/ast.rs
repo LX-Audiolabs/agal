@@ -5,8 +5,8 @@ use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
-    Expr, ExprCall, ExprMethodCall, Fields, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemMacro,
-    ItemStruct, ItemTrait, ItemUse, Macro, Visibility,
+    Expr, ExprCall, ExprField, ExprMethodCall, Fields, ImplItemFn, ItemEnum, ItemFn, ItemImpl,
+    ItemMacro, ItemStruct, ItemTrait, ItemUse, Macro, Member, Visibility,
 };
 
 /// One parameter field on a Params struct.
@@ -104,6 +104,43 @@ pub struct AstSummary {
     /// Allocating patterns found inside plugin process() hooks (RT safety violations).
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub rt_alloc_in_process: Vec<String>,
+    /// Audio/MIDI/notes I/O detected in plugin process() hooks.
+    #[serde(default, skip_serializing_if = "ProcessIo::is_empty")]
+    pub process_io: ProcessIo,
+}
+
+/// Detected I/O paths of a plugin's process() hook (static analysis, best-effort).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProcessIo {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub audio_in: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub audio_out: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sidechain_in: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub midi_in: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub midi_out: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notes_in: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub notes_out: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub transport: bool,
+}
+
+impl ProcessIo {
+    pub fn is_empty(&self) -> bool {
+        !self.audio_in
+            && !self.audio_out
+            && !self.sidechain_in
+            && !self.midi_in
+            && !self.midi_out
+            && !self.notes_in
+            && !self.notes_out
+            && !self.transport
+    }
 }
 
 impl AstSummary {
@@ -524,8 +561,40 @@ impl<'a, 'ast> Visit<'ast> for AudioPluginVisitor<'a> {
                     self.summary.rt_alloc_in_process.push(pat);
                 }
             }
+            let method = node.method.to_string();
+            match method.as_str() {
+                "sidechain_input" => self.summary.process_io.sidechain_in = true,
+                "main_input" | "input" => self.summary.process_io.audio_in = true,
+                "output" => self.summary.process_io.audio_out = true,
+                "flush_ends" => self.summary.process_io.notes_out = true,
+                _ => {}
+            }
         }
         syn::visit::visit_expr_method_call(self, node);
+    }
+
+    fn visit_expr_field(&mut self, node: &'ast ExprField) {
+        if self.in_process_body {
+            if let Expr::Path(path_expr) = &*node.base {
+                if let Some(base_ident) = path_expr.path.get_ident() {
+                    if base_ident == "context" {
+                        let field = match &node.member {
+                            Member::Named(n) => n.to_string(),
+                            Member::Unnamed(_) => String::new(),
+                        };
+                        match field.as_str() {
+                            "midi" => self.summary.process_io.midi_in = true,
+                            "midi_out" => self.summary.process_io.midi_out = true,
+                            "notes" => self.summary.process_io.notes_in = true,
+                            "notes_out" => self.summary.process_io.notes_out = true,
+                            "transport" => self.summary.process_io.transport = true,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        syn::visit::visit_expr_field(self, node);
     }
 
     fn visit_macro(&mut self, node: &'ast Macro) {

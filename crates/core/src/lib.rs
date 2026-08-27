@@ -18,8 +18,11 @@ pub mod delta;
 pub mod findings;
 pub mod guide;
 pub mod harvest;
+pub mod host_matrix;
 pub mod html;
+pub mod skill_draft;
 pub mod notes;
+pub mod process_map;
 pub mod proposals;
 pub mod registry;
 pub mod search;
@@ -2139,6 +2142,47 @@ pub fn harvest_commits(
     since: &str,
 ) -> Result<String, String> {
     harvest::harvest(project_root, output_dir, since)
+}
+
+/// Draft a workspace skill file for one node from its AST + notes atoms.
+/// Writes to `<output_dir>/skills/<node>.md`. Returns the written path.
+pub fn skill_draft_write(
+    project_root: &Path,
+    output_dir: &str,
+    node_name: &str,
+    force: bool,
+) -> Result<String, String> {
+    skill_draft::draft(project_root, output_dir, node_name, force)
+}
+
+/// Preview a skill draft without writing (for MCP).
+pub fn skill_draft_preview(project_root: &Path, node_name: &str) -> Result<String, String> {
+    skill_draft::render_draft(project_root, node_name)
+}
+
+/// Host compatibility matrix from `agal.toml` as markdown.
+pub fn host_matrix_report(project_root: &Path) -> String {
+    let cfg = config::ProjectConfig::load(project_root);
+    host_matrix::render_md(&cfg.host_matrix)
+}
+
+/// Per-node process() I/O map (static AST analysis).
+pub fn process_map_report(project_root: &Path, node_name: &str) -> Result<String, String> {
+    let graph = scan(project_root, false)?;
+    let node = graph
+        .nodes
+        .iter()
+        .find(|n| {
+            n.id == node_name
+                || n.name == node_name
+                || n.id.ends_with(node_name)
+                || n.name.to_ascii_lowercase() == node_name.to_ascii_lowercase()
+        })
+        .ok_or_else(|| {
+            let names: Vec<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
+            format!("node '{}' not found. nodes: {}", node_name, names.join(", "))
+        })?;
+    Ok(process_map::render_node(node))
 }
 
 /// Public entry point used by the `agal` CLI.

@@ -287,6 +287,50 @@ impl AgalServer {
             .map_err(err_internal)
     }
 
+    #[tool(description = "Show host/DAW compatibility matrix (formats, notes dialect, sidechain, param mod, quirks). Configured in agal.toml [[host_matrix]] blocks.")]
+    fn host_matrix(&self) -> String {
+        agal_core::host_matrix_report(&self.workspace)
+    }
+
+    #[tool(description = "Draft a workspace skill file for one node from its AST and notes atoms. Returns the draft markdown for review — call with write=true to also save it to agal/skills/<node>.md.")]
+    fn skill_draft(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Crate or plugin name (e.g. smoke-synth)")]
+        node: String,
+        #[tool(param)]
+        #[schemars(description = "Write to disk in addition to returning the content (default false)")]
+        write: Option<bool>,
+        #[tool(param)]
+        #[schemars(description = "Overwrite existing skill file (default false)")]
+        force: Option<bool>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        if write.unwrap_or(false) {
+            let result = agal_core::skill_draft_write(
+                &self.workspace,
+                &self.output_dir,
+                &node,
+                force.unwrap_or(false),
+            )
+            .map_err(err_internal)?;
+            let preview = agal_core::skill_draft_preview(&self.workspace, &node)
+                .unwrap_or_default();
+            Ok(ok_text(format!("{result}\n\n---\n\n{preview}")))
+        } else {
+            tool_result(agal_core::skill_draft_preview(&self.workspace, &node))
+        }
+    }
+
+    #[tool(description = "Show the process() I/O signal map for one plugin/crate (audio in/out, sidechain, MIDI, CLAP notes, transport). Call nodes first if you don't know the node name.")]
+    fn process_map(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Crate or plugin name (e.g. smoke-synth, aura-clap)")]
+        node: String,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        tool_result(agal_core::process_map_report(&self.workspace, &node))
+    }
+
     #[tool(description = "Append an [ATOM] to a crate note. `note` is required: crate stem (aura-clap) or `_workspace` for cross-cutting decisions only.")]
     fn atom_add(
         &self,

@@ -37,6 +37,9 @@ pub struct ProjectConfig {
     /// Findings to silence (intentional exceptions). Matched after analyze.
     #[serde(default)]
     pub suppress: Vec<SuppressRule>,
+    /// Known DAW/host entries with feature flags and quirks.
+    #[serde(default)]
+    pub host_matrix: Vec<HostEntry>,
     /// HTML graph view preferences.
     #[serde(default)]
     pub view: ViewConfig,
@@ -124,6 +127,47 @@ pub struct RuleLint {
 
 fn default_rule_severity() -> String {
     "warn".to_string()
+}
+
+/// One DAW / host entry in the compatibility matrix.
+///
+/// ```toml
+/// [[host_matrix]]
+/// name = "Bitwig Studio"
+/// version = "5.x"
+/// formats = ["clap", "vst3"]
+/// notes_dialect = "clap"
+/// sidechain = true
+/// param_mod = true
+/// voice_stack = true
+/// midi_cc = true
+/// quirks = ["Voice Stack sends PARAM_MOD before NOTE_ON in same block"]
+/// tested_by = "lxndrbe"
+/// ```
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct HostEntry {
+    pub name: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Plugin formats tested: "clap", "vst3", "lv2".
+    #[serde(default)]
+    pub formats: Vec<String>,
+    /// Which notes dialect this host uses: "clap" | "midi" | "both".
+    #[serde(default)]
+    pub notes_dialect: Option<String>,
+    #[serde(default)]
+    pub sidechain: bool,
+    #[serde(default)]
+    pub param_mod: bool,
+    #[serde(default)]
+    pub voice_stack: bool,
+    #[serde(default)]
+    pub midi_cc: bool,
+    /// Known host-specific bugs, workarounds, or surprises.
+    #[serde(default)]
+    pub quirks: Vec<String>,
+    #[serde(default)]
+    pub tested_by: Option<String>,
 }
 
 /// One intentional mute for a finding code (optionally scoped to a node).
