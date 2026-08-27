@@ -31,6 +31,9 @@ pub struct ProjectConfig {
     /// Package names that provide shared-memory / IPC hubs.
     #[serde(default)]
     pub ipc_hubs: Vec<String>,
+    /// Structural import-rule checks run during generation.
+    #[serde(default)]
+    pub rule_lints: Vec<RuleLint>,
     /// Findings to silence (intentional exceptions). Matched after analyze.
     #[serde(default)]
     pub suppress: Vec<SuppressRule>,
@@ -90,6 +93,37 @@ pub struct ViewConfig {
     /// Default graph view mode. Auto-detected from repo contents when unset.
     #[serde(default)]
     pub default: Option<String>,
+}
+
+/// One structural import rule enforced during generation.
+///
+/// ```toml
+/// [[rule_lints]]
+/// code = "scope_egui"
+/// deny_import = "egui"
+/// in_paths = "crates/"          # optional path prefix filter
+/// severity = "error"            # "error" | "warn" | "info" (default: "warn")
+/// message = "AURA scope: egui not allowed in framework crates"
+/// ```
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RuleLint {
+    /// Finding code (e.g. "scope_egui").
+    pub code: String,
+    /// Substring matched against imported crate names; fires if any crate contains it.
+    #[serde(default)]
+    pub deny_import: Option<String>,
+    /// Only check nodes whose `path` starts with this prefix.
+    #[serde(default)]
+    pub in_paths: Option<String>,
+    /// Severity: "error" | "warn" | "info" (default: "warn").
+    #[serde(default = "default_rule_severity")]
+    pub severity: String,
+    /// Finding message shown in agent.md and MCP findings.
+    pub message: String,
+}
+
+fn default_rule_severity() -> String {
+    "warn".to_string()
 }
 
 /// One intentional mute for a finding code (optionally scoped to a node).

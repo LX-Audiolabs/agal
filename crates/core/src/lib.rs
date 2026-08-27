@@ -17,8 +17,10 @@ pub mod config;
 pub mod delta;
 pub mod findings;
 pub mod guide;
+pub mod harvest;
 pub mod html;
 pub mod notes;
+pub mod proposals;
 pub mod registry;
 pub mod search;
 pub mod skills;
@@ -879,7 +881,7 @@ fn build_audiolabs(
     let frameworks = build_frameworks_from_taxonomy(&taxonomy, &migrations, &used, verbose);
     let used_frameworks: Vec<String> = used.iter().cloned().collect();
 
-    let mut raw_findings = findings::analyze(project_root, &nodes, &edges, &project_config.rules);
+    let mut raw_findings = findings::analyze(project_root, &nodes, &edges, &project_config.rules, &project_config.rule_lints);
     tool_hints::append_hints(project_root, &nodes, &mut raw_findings);
 
     let (findings, findings_suppressed) =
@@ -1003,7 +1005,7 @@ fn api_symbol_priority(s: &ast::ApiSymbol) -> u8 {
     }
 }
 
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
     let now = std::time::SystemTime::now();
     let duration = now
         .duration_since(std::time::UNIX_EPOCH)
@@ -2077,6 +2079,66 @@ pub fn atom_add(
     note: Option<&str>,
 ) -> Result<String, String> {
     atoms::append_atom(project_root, output_dir, atom_type, detail, note)
+}
+
+/// Create a new pending proposal.
+pub fn proposal_propose(
+    project_root: &Path,
+    output_dir: &str,
+    kind: &str,
+    title: &str,
+    detail: &str,
+    rationale: Option<&str>,
+    proposed_by: &str,
+) -> Result<String, String> {
+    proposals::propose(project_root, output_dir, kind, title, detail, rationale, proposed_by)
+}
+
+/// Approve a proposal, optionally promoting it to an [ATOM].
+pub fn proposal_approve(
+    project_root: &Path,
+    output_dir: &str,
+    id: &str,
+    promote: bool,
+) -> Result<String, String> {
+    proposals::approve(project_root, output_dir, id, promote)
+}
+
+/// Reject a proposal with an optional reason.
+pub fn proposal_reject(
+    project_root: &Path,
+    output_dir: &str,
+    id: &str,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    proposals::reject(project_root, output_dir, id, reason)
+}
+
+/// List proposals as markdown. `status_filter`: "pending" | "approved" | "rejected" | None (all).
+pub fn proposal_list(
+    project_root: &Path,
+    output_dir: &str,
+    status_filter: Option<&str>,
+) -> String {
+    proposals::list_md(project_root, output_dir, status_filter)
+}
+
+/// Show one proposal in detail.
+pub fn proposal_show(
+    project_root: &Path,
+    output_dir: &str,
+    id: &str,
+) -> Result<String, String> {
+    proposals::show_md(project_root, output_dir, id)
+}
+
+/// Harvest lessons from recent git commits into pending proposals.
+pub fn harvest_commits(
+    project_root: &Path,
+    output_dir: &str,
+    since: &str,
+) -> Result<String, String> {
+    harvest::harvest(project_root, output_dir, since)
 }
 
 /// Public entry point used by the `agal` CLI.

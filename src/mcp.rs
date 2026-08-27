@@ -151,6 +151,112 @@ impl AgalServer {
         agal_core::findings_report(&self.workspace, &self.output_dir, &type_list)
     }
 
+    #[tool(description = "Create a pending proposal (decision/lesson/constraint/task). Returns the proposal ID for use with approve/reject.")]
+    fn propose(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Kind: decision | lesson | constraint | task")]
+        kind: String,
+        #[tool(param)]
+        #[schemars(description = "Short title")]
+        title: String,
+        #[tool(param)]
+        #[schemars(description = "Detailed description")]
+        detail: String,
+        #[tool(param)]
+        #[schemars(description = "Optional rationale / motivation")]
+        rationale: Option<String>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        agal_core::proposal_propose(
+            &self.workspace,
+            &self.output_dir,
+            &kind,
+            &title,
+            &detail,
+            rationale.as_deref(),
+            "agent",
+        )
+        .map(|id| ok_text(format!("proposal created: {id}")))
+        .map_err(err_internal)
+    }
+
+    #[tool(description = "Approve a pending proposal. Pass promote=true to also write it as an [ATOM] to _workspace notes.")]
+    fn approve(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Proposal ID (e.g. p-001)")]
+        id: String,
+        #[tool(param)]
+        #[schemars(description = "Also promote to [ATOM] in _workspace.md (default false)")]
+        promote: Option<bool>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        agal_core::proposal_approve(
+            &self.workspace,
+            &self.output_dir,
+            &id,
+            promote.unwrap_or(false),
+        )
+        .map(ok_text)
+        .map_err(err_internal)
+    }
+
+    #[tool(description = "Reject a pending proposal with an optional reason.")]
+    fn reject(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Proposal ID (e.g. p-001)")]
+        id: String,
+        #[tool(param)]
+        #[schemars(description = "Optional reason for rejection")]
+        reason: Option<String>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        agal_core::proposal_reject(
+            &self.workspace,
+            &self.output_dir,
+            &id,
+            reason.as_deref(),
+        )
+        .map(ok_text)
+        .map_err(err_internal)
+    }
+
+    #[tool(description = "List proposals. status: pending (default) | approved | rejected | all.")]
+    fn list_proposals(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Status filter: pending | approved | rejected | all (default: pending)")]
+        status: Option<String>,
+    ) -> String {
+        let status_str = status.unwrap_or_else(|| "pending".to_string());
+        let filter = if status_str == "all" { None } else { Some(status_str.as_str()) };
+        agal_core::proposal_list(&self.workspace, &self.output_dir, filter)
+    }
+
+    #[tool(description = "Show one proposal in detail by its ID (e.g. p-001).")]
+    fn show_proposal(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Proposal ID (e.g. p-001)")]
+        id: String,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        agal_core::proposal_show(&self.workspace, &self.output_dir, &id)
+            .map(ok_text)
+            .map_err(err_internal)
+    }
+
+    #[tool(description = "Harvest lessons from recent git commits into pending proposals. since: git date spec (e.g. '7 days ago').")]
+    fn harvest(
+        &self,
+        #[tool(param)]
+        #[schemars(description = "Git date spec (default: '7 days ago')")]
+        since: Option<String>,
+    ) -> Result<CallToolResult, rmcp::Error> {
+        let since = since.unwrap_or_else(|| "7 days ago".to_string());
+        agal_core::harvest_commits(&self.workspace, &self.output_dir, &since)
+            .map(ok_text)
+            .map_err(err_internal)
+    }
+
     #[tool(description = "Append an [ATOM] to a crate note. `note` is required: crate stem (aura-clap) or `_workspace` for cross-cutting decisions only.")]
     fn atom_add(
         &self,

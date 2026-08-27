@@ -184,6 +184,7 @@ pub fn analyze(
     nodes: &[Node],
     edges: &[Edge],
     rules: &BTreeMap<String, String>,
+    rule_lints: &[crate::config::RuleLint],
 ) -> Vec<Finding> {
     let mut out = Vec::new();
 
@@ -841,6 +842,37 @@ pub fn analyze(
                         .with_fix(
                             "ensure both peers share shm/relay signals so ipc_peer edge appears",
                         ),
+                    );
+                }
+            }
+        }
+    }
+
+    // User-declared [[rule_lints]] from agal.toml: import-pattern enforcement.
+    for lint in rule_lints {
+        let sev = match lint.severity.as_str() {
+            "error" => Severity::Error,
+            "info" => Severity::Info,
+            _ => Severity::Warn,
+        };
+        for node in nodes {
+            if let Some(prefix) = &lint.in_paths {
+                if !node.path.starts_with(prefix.as_str()) {
+                    continue;
+                }
+            }
+            let Some(ast) = node.ast_summary.as_ref() else {
+                continue;
+            };
+            if let Some(deny) = &lint.deny_import {
+                if ast.imported_crates.iter().any(|c| c.contains(deny.as_str())) {
+                    out.push(
+                        Finding::new(sev.clone(), &lint.code, &lint.message)
+                            .at_node(node)
+                            .with_fix(format!(
+                                "remove `{}` import from `{}`",
+                                deny, node.path
+                            )),
                     );
                 }
             }

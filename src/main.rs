@@ -104,6 +104,22 @@ enum Commands {
         #[arg(default_value = ".")]
         project_root: std::path::PathBuf,
     },
+    /// Manage architecture proposals (pending decisions, lessons, constraints)
+    Proposal {
+        #[command(subcommand)]
+        action: ProposalCmd,
+    },
+    /// Harvest lessons from recent git commits into pending proposals
+    Harvest {
+        /// Git date spec (e.g. "7 days ago", "2 weeks ago", "2026-08-01")
+        #[arg(long, default_value = "7 days ago")]
+        since: String,
+        /// Output dir under project root (default: agal)
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
     /// Start an MCP server over stdio (for Claude Code / AI tool integration)
     Serve {
         #[arg(default_value = ".")]
@@ -155,6 +171,68 @@ enum SkillsCmd {
 }
 
 #[derive(Subcommand)]
+enum ProposalCmd {
+    /// List proposals
+    List {
+        /// Filter by status: pending | approved | rejected | all (default: pending)
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Show one proposal in detail
+    Show {
+        /// Proposal ID (e.g. p-001)
+        id: String,
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Create a new pending proposal
+    Add {
+        /// Kind: decision | lesson | constraint | task
+        #[arg(long, default_value = "decision")]
+        kind: String,
+        /// Short title
+        title: String,
+        /// Detailed description
+        detail: String,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Approve a proposal
+    Approve {
+        /// Proposal ID (e.g. p-001)
+        id: String,
+        /// Also write as [ATOM] to _workspace.md
+        #[arg(long)]
+        promote: bool,
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+    /// Reject a proposal
+    Reject {
+        /// Proposal ID (e.g. p-001)
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(short, long)]
+        output: Option<String>,
+        #[arg(default_value = ".")]
+        project_root: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum AtomCmd {
     /// Add an [ATOM] entry to a note (default: _workspace.md)
     Add {
@@ -198,6 +276,65 @@ fn main() {
 
     if let Some(cmd) = cli.command {
         match cmd {
+            Commands::Proposal { action } => {
+                let (project_root, output_override) = match &action {
+                    ProposalCmd::List { project_root, output, .. } => (project_root.clone(), output.clone()),
+                    ProposalCmd::Show { project_root, output, .. } => (project_root.clone(), output.clone()),
+                    ProposalCmd::Add { project_root, output, .. } => (project_root.clone(), output.clone()),
+                    ProposalCmd::Approve { project_root, output, .. } => (project_root.clone(), output.clone()),
+                    ProposalCmd::Reject { project_root, output, .. } => (project_root.clone(), output.clone()),
+                };
+                let root = canonicalize_root(&project_root);
+                let output_dir = output_override.unwrap_or_else(|| {
+                    agal_core::config::ProjectConfig::load(&root)
+                        .output_dir
+                        .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                });
+                match action {
+                    ProposalCmd::List { status, .. } => {
+                        let filter = status.as_deref().and_then(|s| if s == "all" { None } else { Some(s) });
+                        print!("{}", agal_core::proposal_list(&root, &output_dir, filter));
+                    }
+                    ProposalCmd::Show { id, .. } => {
+                        match agal_core::proposal_show(&root, &output_dir, &id) {
+                            Ok(r) => print!("{r}"),
+                            Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                        }
+                    }
+                    ProposalCmd::Add { kind, title, detail, rationale, .. } => {
+                        match agal_core::proposal_propose(&root, &output_dir, &kind, &title, &detail, rationale.as_deref(), "human") {
+                            Ok(id) => println!("proposal created: {id}"),
+                            Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                        }
+                    }
+                    ProposalCmd::Approve { id, promote, .. } => {
+                        match agal_core::proposal_approve(&root, &output_dir, &id, promote) {
+                            Ok(r) => println!("{r}"),
+                            Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                        }
+                    }
+                    ProposalCmd::Reject { id, reason, .. } => {
+                        match agal_core::proposal_reject(&root, &output_dir, &id, reason.as_deref()) {
+                            Ok(r) => println!("{r}"),
+                            Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                        }
+                    }
+                }
+                return;
+            }
+            Commands::Harvest { since, output, project_root } => {
+                let root = canonicalize_root(&project_root);
+                let output_dir = output.unwrap_or_else(|| {
+                    agal_core::config::ProjectConfig::load(&root)
+                        .output_dir
+                        .unwrap_or_else(|| agal_core::DEFAULT_OUTPUT_DIR.to_string())
+                });
+                match agal_core::harvest_commits(&root, &output_dir, &since) {
+                    Ok(r) => print!("{r}"),
+                    Err(e) => { eprintln!("error: {e}"); std::process::exit(1); }
+                }
+                return;
+            }
             Commands::Serve { project_root } => {
                 let root = canonicalize_root(&project_root);
                 let server = mcp::AgalServer::new(root);
