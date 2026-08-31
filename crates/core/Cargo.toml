@@ -13,4 +13,4 @@ toml = "1"
 syn = { version = "3", features = ["full", "visit"] }
 walkdir = "2"
 notify = "8"
-tantivy = "0.22"
+tantivy = "0.26"
